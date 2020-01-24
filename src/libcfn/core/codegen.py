@@ -12,6 +12,7 @@ from spec import (
     PrimitiveScalarPropertySpec,
     PrimitiveType,
     PropertySpec,
+    PropertyType,
     ResourceSpec,
     Specification,
     load,
@@ -19,9 +20,19 @@ from spec import (
 from typing_extensions import Protocol
 
 
+class _PythonTypeReference(Protocol):
+    """Workaround for mypy's lack of support for recursive types."""
+
+    def __str__(self) -> str:
+        ...
+
+    def modules(self) -> List[str]:
+        ...
+
+
 class PythonTypeReference(NamedTuple):
     name: str
-    type_arguments: List["PythonTypeReference"]
+    type_arguments: List["_PythonTypeReference"]
     module: Optional[str] = None
 
     def __str__(self) -> str:
@@ -43,7 +54,7 @@ class PythonType(Protocol):
     def python_type_reference(self) -> PythonTypeReference:
         ...
 
-    def serialize_python_type_definition(self, indent: str) -> str:
+    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
         ...
 
 
@@ -78,6 +89,9 @@ class PythonMethod(NamedTuple):
         return output
 
 
+KEYWORDS = "None"
+
+
 class PythonTypeClass(NamedTuple):
     name: str
     module: Optional[str]
@@ -90,14 +104,20 @@ class PythonTypeClass(NamedTuple):
             name=self.name, type_arguments=[], module=self.module
         )
 
-    def serialize_python_type_definition(self, indent: str) -> (str, List[str]):
+    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
         imports = ["typing"]
         output = f"{indent}class {self.name}(typing.NamedTuple):"
         for property_name, property_type in self.required_properties:
-            output += f"\n{indent}    {property_name}: {property_type}"
+            property_name = (
+                property_name if property_name not in KEYWORDS else f"{property_name}_"
+            )
+            output += f"\n{indent}    {property_name}: '{property_type}'"
             imports.extend(property_type.modules())
         for property_name, property_type in self.optional_properties:
-            output += f"\n{indent}    {property_name}: typing.Optional[{property_type}] = None"
+            property_name = (
+                property_name if property_name not in KEYWORDS else f"{property_name}_"
+            )
+            output += f"\n{indent}    {property_name}: typing.Optional['{property_type}'] = None"
             imports.extend(property_type.modules())
         for method in self.methods:
             output += f"\n{method.serialize_python_method_definition(indent+'    ')}"
@@ -110,12 +130,12 @@ class PythonTypeNewType(NamedTuple):
     module: Optional[str] = None
     parent_type_module: Optional[str] = None
 
-    def python_type_reference(self) -> str:
+    def python_type_reference(self) -> PythonTypeReference:
         return PythonTypeReference(
             name=self.name, type_arguments=[], module=self.module
         )
 
-    def serialize_python_type_definition(self, indent: str) -> (str, List[str]):
+    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
         return (
             f"{indent}{self.name} = typing.NewType('"
             f"{self.name}', {self.parent_type})",
@@ -158,7 +178,7 @@ TYPE_REF_TAG = _cfntype("Tag")
 
 
 class PythonTypeBuilder(NamedTuple):
-    namespace: Dict[NonPrimitivePropertyType, PropertySpec]
+    namespace: Dict[NonPrimitivePropertyType, PropertyType]
     module: str
 
     def build_primitive_type(
@@ -187,17 +207,13 @@ class PythonTypeBuilder(NamedTuple):
     ) -> PythonTypeReference:
         return _list_type(self.build_primitive_type(spec.PrimitiveItemType))
 
-    def _class_from_properties(
+    def class_from_properties(
         self, name: str, properties: Dict[str, PropertySpec]
-    ) -> (PythonTypeClass, List[PythonType]):
+    ) -> PythonTypeClass:
         required_properties = []
         optional_properties = []
-        dependencies = []
         for property_name, property_spec in properties.items():
-            property_type_reference, property_dependencies = self.build_type(
-                property_name, property_spec
-            )
-            dependencies.extend(property_dependencies)
+            property_type_reference = self.build_spec(property_name, property_spec)
             if isinstance(property_spec, NestedPropertySpec):
                 raise Exception(
                     "NestedPropertySpecs shouldn't live under other nested property specs?"
@@ -208,37 +224,18 @@ class PythonTypeBuilder(NamedTuple):
                 required_properties.append((property_name, property_type_reference))
             else:
                 optional_properties.append((property_name, property_type_reference))
-        return (
-            PythonTypeClass(
-                name=name,
-                module=self.module,
-                required_properties=required_properties,
-                optional_properties=optional_properties,
-                methods=[],
-            ),
-            dependencies,
+        return PythonTypeClass(
+            name=name,
+            module=self.module,
+            required_properties=required_properties,
+            optional_properties=optional_properties,
+            methods=[],
         )
 
     def build_nested_property_type(
         self, name: str, spec: NestedPropertySpec
-    ) -> (PythonTypeReference, List[PythonType]):
-        python_class, dependencies = self._class_from_properties(name, spec.Properties)
-        python_class = PythonTypeClass(
-            name=python_class.name,
-            module=python_class.module,
-            required_properties=python_class.required_properties,
-            optional_properties=python_class.optional_properties,
-            methods=[
-                PythonMethod(
-                    name="reference",
-                    arguments=[],
-                    return_type=_dict_type(BUILTIN_STR, TYPING_ANY),
-                    body=[PythonCustomStatement(content="raise NotImplementedError()")],
-                )
-            ],
-        )
-        dependencies.append(python_class)
-        return python_class.python_type_reference(), dependencies
+    ) -> PythonTypeReference:
+        return PythonTypeReference(name=name, type_arguments=[], module=self.module)
 
     def build_primitive_map_property_spec(
         self, spec: PrimitiveMapPropertySpec
@@ -249,45 +246,44 @@ class PythonTypeBuilder(NamedTuple):
 
     def build_non_primitive_map_property_spec(
         self, spec: NonPrimitiveMapPropertySpec
-    ) -> (PythonTypeReference, List[PythonType]):
-        value_type_reference, dependencies = self.build_non_primitive_property_type(
-            spec.ItemType
-        )
-        return _dict_type(TYPE_REF_STRING, value_type_reference), dependencies
+    ) -> PythonTypeReference:
+        value_type_reference = self.build_non_primitive_property_type(spec.ItemType)
+        return _dict_type(TYPE_REF_STRING, value_type_reference)
 
     def build_non_primitive_property_type(
         self, property_type: NonPrimitivePropertyType
-    ) -> (PythonTypeReference, List[PythonType]):
+    ) -> PythonTypeReference:
         if property_type == "Tag":
-            return TYPE_REF_TAG, []
+            return TYPE_REF_TAG
         # NOTE: It's a hard error if property_type is not in self.namespace
-        print(property_type, self.namespace[property_type])
-        print()
         return self.build_type(str(property_type), self.namespace[property_type])
 
     def build_non_primitive_list_type(
         self, spec: NonPrimitiveListPropertySpec
-    ) -> (PythonTypeReference, List[PythonType]):
-        item_type_reference, dependencies = self.build_non_primitive_property_type(
-            spec.ItemType
-        )
-        return _list_type(item_type_reference), dependencies
+    ) -> PythonTypeReference:
+        item_type_reference = self.build_non_primitive_property_type(spec.ItemType)
+        return _list_type(item_type_reference)
 
-    def build_type(
-        self, name: str, spec: PropertySpec
-    ) -> (PythonTypeReference, List[PythonType]):
+    def build_spec(self, name: str, spec: PropertySpec) -> PythonTypeReference:
         if isinstance(spec, PrimitiveScalarPropertySpec):
-            return self.build_primitive_type(spec.PrimitiveType), []
+            return self.build_primitive_type(spec.PrimitiveType)
         if isinstance(spec, NonPrimitiveScalarPropertySpec):
             return self.build_non_primitive_property_type(spec.Type)
         if isinstance(spec, PrimitiveListPropertySpec):
-            return self.build_primitive_list_type(spec), []
+            return self.build_primitive_list_type(spec)
         if isinstance(spec, NonPrimitiveListPropertySpec):
             return self.build_non_primitive_list_type(spec)
         if isinstance(spec, PrimitiveMapPropertySpec):
-            return self.build_primitive_map_property_spec(spec), []
+            return self.build_primitive_map_property_spec(spec)
         if isinstance(spec, NonPrimitiveMapPropertySpec):
             return self.build_non_primitive_map_property_spec(spec)
+        raise TypeError(f"Invalid PropertySpec: {spec}")
+
+    def build_type(self, name: str, spec: PropertyType) -> PythonTypeReference:
+        if isinstance(spec, PrimitiveScalarPropertySpec):
+            return self.build_primitive_type(spec.PrimitiveType)
+        if isinstance(spec, NonPrimitiveListPropertySpec):
+            return self.build_non_primitive_list_type(spec)
         if isinstance(spec, NestedPropertySpec):
             return self.build_nested_property_type(name, spec)
         raise TypeError(f"Invalid PropertySpec: {spec}")
@@ -382,12 +378,10 @@ class PythonTypeBuilder(NamedTuple):
         output += "\nreturn output"
         return PythonCustomStatement(content=output)
 
-    def build_resource(
-        self, resource_id: str, spec: ResourceSpec
-    ) -> (PythonTypeReference, List[PythonType]):
+    def build_resource(self, resource_id: str, spec: ResourceSpec) -> PythonTypeClass:
         idx = resource_id.rfind("::")
         name = resource_id[0 if idx < 0 else idx + 2 :]
-        python_class, dependencies = self._class_from_properties(name, spec.Properties)
+        python_class = self.class_from_properties(name, spec.Properties)
         python_class = PythonTypeClass(
             name=python_class.name,
             module=python_class.module,
@@ -407,31 +401,59 @@ class PythonTypeBuilder(NamedTuple):
                 )
             ],
         )
-        dependencies.append(python_class)
-        return python_class.python_type_reference(), dependencies
+        return python_class
 
 
 def generate_resource(
     module: str, spec: Specification, resource_id: str
 ) -> List[PythonType]:
-    _, typedefs = PythonTypeBuilder(
+    builder = PythonTypeBuilder(
         namespace={
-            key[len(resource_id) + 1 :]: value
+            NonPrimitivePropertyType(key[len(resource_id) + 1 :]): value
             for key, value in spec.PropertyTypes.items()
             if key.startswith(resource_id)
         },
         module=module,
-    ).build_resource(resource_id, spec.ResourceTypes[resource_id])
-    output = []
-    seen = {}
-    for typedef in typedefs:
-        if typedef.name in seen:
-            if typedef != seen[typedef.name]:
-                raise Exception("Encountered different types with the same name")
-            continue
-        output.append(typedef)
-        seen[typedef.name] = typedef
-    return output
+    )
+
+    # Build type definitions for all property types in the resource's namespace.
+    typedefs: List[PythonType] = []
+    for property_type_name, property_type in spec.PropertyTypes.items():
+        prefix = f"{resource_id}."
+        if property_type_name.startswith(prefix) and isinstance(
+            property_type, NestedPropertySpec
+        ):
+            class_ = builder.class_from_properties(
+                name=property_type_name[len(prefix) :],
+                properties=property_type.Properties,
+            )
+            typedefs.append(
+                PythonTypeClass(
+                    name=class_.name,
+                    module=class_.module,
+                    required_properties=class_.required_properties,
+                    optional_properties=class_.optional_properties,
+                    methods=[
+                        PythonMethod(
+                            name="reference",
+                            arguments=[],
+                            return_type=_dict_type(BUILTIN_STR, TYPING_ANY),
+                            body=[
+                                PythonCustomStatement(
+                                    content="raise NotImplementedError()"
+                                )
+                            ],
+                        )
+                    ],
+                )
+            )
+
+    # Build the type definition for the resource class.
+    typedefs.append(
+        builder.build_resource(resource_id, spec.ResourceTypes[resource_id])
+    )
+
+    return typedefs
 
 
 def render_module(module: str, typedefs: List[PythonType]) -> str:

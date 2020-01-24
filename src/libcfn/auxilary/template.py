@@ -35,20 +35,3 @@ class Template(NamedTuple):
                 for resource in self.resources
             },
         }
-
-
-if __name__ == "__main__":
-    import json
-
-    parameter = ParameterString(
-        logical_id="BucketName", Description="The name of the bucket"
-    )
-    t = Template(
-        description="S3 Bucket Template",
-        parameters=[parameter],
-        resources=[
-            Bucket(logical_id="Bucket", BucketName=parameter),
-            BucketPolicy(logical_id="BucketPolicy"),
-        ],
-    )
-    print(json.dumps(t.template_to_cloudformation(), indent=4))

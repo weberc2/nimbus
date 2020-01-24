@@ -171,7 +171,6 @@ PropertySpec = Union[
     NonPrimitiveListPropertySpec,
     PrimitiveMapPropertySpec,
     NonPrimitiveMapPropertySpec,
-    NestedPropertySpec,
 ]
 
 
@@ -205,7 +204,7 @@ def property_spec_from_dict(dict_: Dict[str, Any]) -> PropertySpec:
                 return NonPrimitiveScalarPropertySpec.from_dict(dict_)
             except Exception:
                 pass
-    return NestedPropertySpec.from_dict(dict_)
+    raise TypeError(f"Invalid PropertySpec dict: {dict_}")
 
 
 class NonPrimitiveListAttributeSpec(NamedTuple):
@@ -312,15 +311,44 @@ class ResourceSpec(NamedTuple):
         )
 
 
+# TODO: Rename NestedPropertySpec to RecordPropertySpec (or similar)
+PropertyType = Union[
+    NestedPropertySpec, PrimitiveScalarPropertySpec, NonPrimitiveListPropertySpec
+]
+
+
+def property_type_from_dict(dict_: Dict[str, Any]) -> PropertyType:
+    if "PrimitiveType" in dict_:
+        return PrimitiveScalarPropertySpec.from_dict(dict_)
+    type_ = dict_.get("Type")
+    if type_ is not None:
+        # Try list
+        if dict_["Type"] == "List":
+            try:
+                return NonPrimitiveListPropertySpec.from_dict(dict_)
+            except Exception:
+                pass
+    return NestedPropertySpec.from_dict(dict_)
+
+
+def _gather_property_types(
+    property_types_dict: Dict[str, Any]
+) -> Dict[NonPrimitivePropertyType, PropertyType]:
+    return {
+        NonPrimitivePropertyType(key): property_type_from_dict(value)
+        for key, value in property_types_dict.items()
+    }
+
+
 class Specification(NamedTuple):
-    PropertyTypes: Dict[str, PropertySpec]
+    PropertyTypes: Dict[NonPrimitivePropertyType, PropertyType]
     ResourceSpecificationVersion: str
     ResourceTypes: Dict[str, ResourceSpec]
 
     @staticmethod
     def from_dict(dict_: Dict[str, Any]) -> "Specification":
         return Specification(
-            PropertyTypes=_gather_properties(dict_["PropertyTypes"]),
+            PropertyTypes=_gather_property_types(dict_["PropertyTypes"]),
             ResourceSpecificationVersion=dict_["ResourceSpecificationVersion"],
             ResourceTypes={
                 resource_spec_name: ResourceSpec.from_dict(resource_spec_dict)
@@ -333,8 +361,9 @@ class Specification(NamedTuple):
 
 @lru_cache()
 def load() -> Specification:
-    return Specification.from_dict(json.loads(
-        """{
+    return Specification.from_dict(
+        json.loads(
+            """{
   "PropertyTypes": {
     "AWS::AppMesh::VirtualRouter.PortMapping": {
       "Documentation": "http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-appmesh-virtualrouter-portmapping.html",
@@ -52061,4 +52090,5 @@ def load() -> Specification:
   "ResourceSpecificationVersion": "10.2.0"
 }
         """
-    ))
+        )
+    )
