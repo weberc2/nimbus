@@ -1,9 +1,9 @@
 from typing import Any, Dict, NamedTuple, List
 
-from libcfn.types import Resource, Parameter, ParameterString
+from nimbus_core import Resource, Parameter, ParameterString
 
-from awscfn.s3.bucket import Bucket
-from awscfn.iam.managedpolicy import ManagedPolicy
+from nimbus_resources.s3.bucket import Bucket
+from nimbus_resources.iam.managedpolicy import ManagedPolicy
 
 
 def parameter_to_cloudformation(parameter: Parameter) -> Dict[str, Any]:

@@ -88,36 +88,50 @@ class ParameterCommaDelineatedList(NamedTuple):
         return self.logical_id, List[str], self.Default
 
 
+PARAMETER_TYPES = (
+    ParameterString,
+    ParameterNumber,
+    ParameterNumberList,
+    ParameterCommaDelineatedList,
+)
 Parameter = Union[
     ParameterString, ParameterNumber, ParameterNumberList, ParameterCommaDelineatedList
 ]
 
 
-class AttributeString:
+class Attribute(NamedTuple):
+    resource: Resource
+    attribute_name: str
+
+    def attribute_to_cloudformation(self) -> Dict[str, Any]:
+        return {"Fn::GetAtt": f"{self.resource.logical_id}.{self.attribute_name}"}
+
+
+class AttributeString(Attribute):
     pass
 
 
-class AttributeLong:
+class AttributeLong(Attribute):
     pass
 
 
-class AttributeInteger:
+class AttributeInteger(Attribute):
     pass
 
 
-class AttributeDouble:
+class AttributeDouble(Attribute):
     pass
 
 
-class AttributeBoolean:
+class AttributeBoolean(Attribute):
     pass
 
 
-class AttributeTimestamp:
+class AttributeTimestamp(Attribute):
     pass
 
 
-class AttributeJSON:
+class AttributeJSON(Attribute):
     pass
 
 
@@ -214,6 +228,40 @@ def property_timestamp_reference(
 
 
 PropertyJSON = Dict[str, Any]
+
+
+def property_json_reference(property_json: PropertyJSON) -> Dict[str, Any]:
+    def _process_value(value: Any) -> Any:
+        if isinstance(value, PARAMETER_TYPES):
+            return {"Ref": value.logical_id}
+        if isinstance(value, Resource):
+            return {"Ref": value.logical_id}
+        if isinstance(value, dict):
+            output = {}
+            for k, v in value.items():
+                try:
+                    output[k] = _process_value(v)
+                except TypeError as e:
+                    raise TypeError(f"In key {k}: {e}")
+            return output
+        if isinstance(value, list):
+            output = []
+            for i, x in enumerate(value):
+                try:
+                    output.append(_process_value(x))
+                except TypeError as e:
+                    raise TypeError(f"At index {i}: {e}")
+            return output
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        raise TypeError(
+            f"{value} (of type {type(value)}) is not a valid JSON node type"
+        )
+
+    try:
+        return _process_value(property_json)
+    except TypeError as e:
+        raise TypeError(f"Invalid JSON object: {e}")
 
 
 class Tag(typing.NamedTuple):

@@ -1,18 +1,23 @@
 import json
 
-from awscfn.iam.managedpolicy import ManagedPolicy
-from awscfn.s3.bucket import Bucket
-from libcfn.auxilary.template import Template
-from libcfn.types import ParameterString
+from nimbus_resources.iam.managedpolicy import ManagedPolicy
+from nimbus_resources.s3.bucket import Bucket
+from nimbus_core.template import Template
+from nimbus_core import ParameterString
 
-parameter = ParameterString(
+bucket_name_parameter = ParameterString(
     logical_id="BucketName", Description="The name of the bucket"
 )
+key_arn_parameter = ParameterString(
+    logical_id="KMSKeyARN",
+    Description="The ARN of the KMS key used to encrypt the bucket",
+)
+bucket = Bucket(logical_id="Bucket", BucketName=bucket_name_parameter)
 t = Template(
     description="S3 Bucket Template",
-    parameters=[parameter],
+    parameters=[bucket_name_parameter],
     resources=[
-        Bucket(logical_id="Bucket", BucketName=parameter),
+        bucket,
         ManagedPolicy(
             logical_id="BucketPolicy",
             PolicyDocument={
@@ -25,7 +30,11 @@ t = Template(
                         "Resource": {
                             "Fn::Sub": [
                                 "${BucketARN}/*",
-                                {"BucketARN": {"Fn::GetAtt": "Bucket.Arn"}},
+                                {
+                                    "BucketARN": {
+                                        "Fn::GetAtt": f"{bucket.logical_id}.Arn"
+                                    }
+                                },
                             ]
                         },
                     },
@@ -39,9 +48,7 @@ t = Template(
                             "kms:GenerateDataKey*",
                             "kms:DescribeKey",
                         ],
-                        "Resource": {
-                            "Fn::Sub": "arn:aws:kms:us-east-1:231405699240:key/${KeyID}"
-                        },
+                        "Resource": key_arn_parameter,
                     },
                     {
                         "Sid": "AllowAttachmentOfPersistentResources",
@@ -51,9 +58,7 @@ t = Template(
                             "kms:ListGrants",
                             "kms:RevokeGrant",
                         ],
-                        "Resource": {
-                            "Fn::Sub": "arn:aws:kms:us-east-1:231405699240:key/${KeyID}"
-                        },
+                        "Resource": key_arn_parameter,
                         "Condition": {"Bool": {"kms:GrantIsForAWSResource": True}},
                     },
                 ],

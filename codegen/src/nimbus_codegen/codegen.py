@@ -1,5 +1,8 @@
 import os
 from typing import Dict, List, NamedTuple, Optional, Tuple
+from pathlib import Path
+
+import black
 
 from spec import (
     NestedPropertySpec,
@@ -75,13 +78,17 @@ class PythonMethod(NamedTuple):
     arguments: List[Tuple[str, PythonTypeReference]]
     return_type: PythonTypeReference
     body: List[PythonStatement]
+    decorators: List[str]
 
     def serialize_python_method_definition(self, indent: str) -> str:
         formatted_arguments = ", ".join(
             ["self"]
             + [f"{arg_name}: {arg_type}" for arg_name, arg_type in self.arguments]
         )
-        output = (
+        output = ""
+        for decorator in self.decorators:
+            output += f"{indent}@{decorator}\n"
+        output += (
             f"{indent}def {self.name}({formatted_arguments}) -> {self.return_type}:"
         )
         for stmt in self.body:
@@ -157,12 +164,12 @@ def _list_type(item_type: PythonTypeReference) -> PythonTypeReference:
     return PythonTypeReference(name="List", type_arguments=[item_type], module="typing")
 
 
-def _cfntype(name: str) -> PythonTypeReference:
-    return PythonTypeReference(name=name, type_arguments=[], module="libcfn.types")
+def _nimbustype(name: str) -> PythonTypeReference:
+    return PythonTypeReference(name=name, type_arguments=[], module="nimbus_core")
 
 
 def _proptype(name: str) -> PythonTypeReference:
-    return _cfntype(f"Property{name}")
+    return _nimbustype(f"Property{name}")
 
 
 BUILTIN_STR = PythonTypeReference(name="str", type_arguments=[], module=None)
@@ -174,7 +181,7 @@ TYPE_REF_BOOLEAN = _proptype("Boolean")
 TYPE_REF_DOUBLE = _proptype("Double")
 TYPE_REF_TIMESTAMP = _proptype("Timestamp")
 TYPE_REF_JSON = _proptype("JSON")
-TYPE_REF_TAG = _cfntype("Tag")
+TYPE_REF_TAG = _nimbustype("Tag")
 
 
 class PythonTypeBuilder(NamedTuple):
@@ -293,17 +300,17 @@ class PythonTypeBuilder(NamedTuple):
         property_variable: str, primitive_type: PrimitiveType
     ) -> str:
         if primitive_type == PrimitiveType.Boolean:
-            return f"libcfn.types.property_boolean_reference({property_variable})"
+            return f"nimbus_core.property_boolean_reference({property_variable})"
         if primitive_type == PrimitiveType.Double:
-            return f"libcfn.types.property_double_reference({property_variable})"
+            return f"nimbus_core.property_double_reference({property_variable})"
         if primitive_type == PrimitiveType.Integer:
-            return f"libcfn.types.property_integer_reference({property_variable})"
+            return f"nimbus_core.property_integer_reference({property_variable})"
         if primitive_type == PrimitiveType.Json:
-            return f"{property_variable}"
+            return f"nimbus_core.property_json_reference({property_variable})"
         if primitive_type == PrimitiveType.Long:
-            return f"libcfn.types.property_long_reference({property_variable})"
+            return f"nimbus_core.property_long_reference({property_variable})"
         if primitive_type == PrimitiveType.String:
-            return f"libcfn.types.property_string_reference({property_variable})"
+            return f"nimbus_core.property_string_reference({property_variable})"
         if primitive_type == PrimitiveType.Timestamp:
             return f"property_timestamp_reference({property_variable})"
         raise TypeError(
@@ -315,7 +322,7 @@ class PythonTypeBuilder(NamedTuple):
         module, property_variable: str, property_type: NonPrimitivePropertyType
     ) -> str:
         if str(property_type) == "Tag":
-            module = "libcfn.types"
+            module = "nimbus_core"
         return f"{module}.{property_type}.reference({property_variable})"
 
     @staticmethod
@@ -398,6 +405,7 @@ class PythonTypeBuilder(NamedTuple):
                             self.module, resource_id, spec
                         )
                     ],
+                    decorators=[],
                 )
             ],
         )
@@ -443,6 +451,7 @@ def generate_resource(
                                     content="raise NotImplementedError()"
                                 )
                             ],
+                            decorators=[],
                         )
                     ],
                 )
@@ -498,7 +507,12 @@ def generate_resource_file(
 
     # Render the file
     with open(filepath, "w") as f:
-        f.write(render_module(module, generate_resource(module, spec, resource_type)))
+        f.write(
+            black.format_str(
+                render_module(module, generate_resource(module, spec, resource_type)),
+                mode=black.FileMode(target_versions={black.TargetVersion.PY36}),
+            )
+        )
 
 
 def generate_resource_files(spec: Specification, directory: str) -> None:
@@ -506,5 +520,32 @@ def generate_resource_files(spec: Specification, directory: str) -> None:
         generate_resource_file(spec, resource_type, directory)
 
 
+def generate_resources_package(spec: Specification, directory: str) -> None:
+    generate_resource_files(spec, os.path.join(directory, "src", "nimbus_resources"))
+    with open(os.path.join(directory, "setup.py"), "w") as f:
+        f.write(
+            """import os
+
+import setuptools
+
+setuptools.setup(
+    name="nimbus-resources",
+    version=os.environ.get("BUILD_VERSION", "0.0.0.dev-1"),
+    package_dir={"": "src"},
+    packages=setuptools.find_packages("src"),
+    provides=setuptools.find_packages("src"),
+)"""
+        )
+
+    # Format the generated code
+    black.gen_python_files_in_dir(
+        path=Path(directory),
+        root=Path(directory),
+        include=black.DEFAULT_INCLUDES,
+        exclude=black.DEFAULT_EXCLUDES,
+        report=black.Report(),
+    )
+
+
 if __name__ == "__main__":
-    generate_resource_files(load(), "/tmp/output/src/awscfn")
+    generate_resources_package(load(), "/tmp/nimbus-resources")
