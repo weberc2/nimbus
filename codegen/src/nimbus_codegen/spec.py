@@ -1,6 +1,6 @@
+import json
 from enum import Enum
 from functools import lru_cache
-import json
 from typing import Any, Dict, NamedTuple, NewType, Optional, Union
 
 from typing_extensions import Literal
@@ -30,7 +30,7 @@ class UpdateType(Enum):
     Conditional = "Conditional"
 
 
-class NonPrimitiveListPropertySpec(NamedTuple):
+class NonPrimitiveListPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: Optional[bool]
     UpdateType: UpdateType
@@ -39,12 +39,12 @@ class NonPrimitiveListPropertySpec(NamedTuple):
     Type: Literal["List"] = "List"
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveListPropertySpec":
+    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveListPropertyTypeReference":
         if dict_["Type"] != "List":
             raise ValueError(
                 "Value for key 'Type' must be 'List' for NonPrimitiveListAttributeSpec"
             )
-        return NonPrimitiveListPropertySpec(
+        return NonPrimitiveListPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required"),
             UpdateType=dict_["UpdateType"],
@@ -53,7 +53,7 @@ class NonPrimitiveListPropertySpec(NamedTuple):
         )
 
 
-class PrimitiveListPropertySpec(NamedTuple):
+class PrimitiveListPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: Optional[bool]
     UpdateType: UpdateType
@@ -62,12 +62,12 @@ class PrimitiveListPropertySpec(NamedTuple):
     Type: Literal["List"] = "List"
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveListPropertySpec":
+    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveListPropertyTypeReference":
         if dict_["Type"] != "List":
             raise ValueError(
                 "Value for key 'Type' must be 'List' for PrimitiveListAttributeSpec"
             )
-        return PrimitiveListPropertySpec(
+        return PrimitiveListPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required"),
             UpdateType=dict_["UpdateType"],
@@ -76,7 +76,7 @@ class PrimitiveListPropertySpec(NamedTuple):
         )
 
 
-class PrimitiveMapPropertySpec(NamedTuple):
+class PrimitiveMapPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: Optional[bool]
     UpdateType: UpdateType
@@ -85,12 +85,12 @@ class PrimitiveMapPropertySpec(NamedTuple):
     DuplicatesAllowed: Literal[False] = False
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveMapPropertySpec":
+    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveMapPropertyTypeReference":
         if dict_["Type"] != "Map":
             raise ValueError(
                 "Value for key 'Type' must be 'Map' for PrimitiveMapAttributeSpec"
             )
-        return PrimitiveMapPropertySpec(
+        return PrimitiveMapPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required"),
             UpdateType=dict_["UpdateType"],
@@ -98,7 +98,7 @@ class PrimitiveMapPropertySpec(NamedTuple):
         )
 
 
-class NonPrimitiveMapPropertySpec(NamedTuple):
+class NonPrimitiveMapPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: Optional[bool]
     UpdateType: UpdateType
@@ -107,12 +107,12 @@ class NonPrimitiveMapPropertySpec(NamedTuple):
     DuplicatesAllowed: Literal[False] = False
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveMapPropertySpec":
+    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveMapPropertyTypeReference":
         if dict_["Type"] != "Map":
             raise ValueError(
                 "Value for key 'Type' must be 'Map' for NonPrimitiveMapAttributeSpec"
             )
-        return NonPrimitiveMapPropertySpec(
+        return NonPrimitiveMapPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required"),
             UpdateType=dict_["UpdateType"],
@@ -120,15 +120,15 @@ class NonPrimitiveMapPropertySpec(NamedTuple):
         )
 
 
-class PrimitiveScalarPropertySpec(NamedTuple):
+class PrimitiveScalarPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: bool
     UpdateType: Optional[UpdateType]
     PrimitiveType: PrimitiveType
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveScalarPropertySpec":
-        return PrimitiveScalarPropertySpec(
+    def from_dict(dict_: Dict[str, Any]) -> "PrimitiveScalarPropertyTypeReference":
+        return PrimitiveScalarPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required", True),
             UpdateType=dict_.get("UpdateType"),
@@ -136,15 +136,15 @@ class PrimitiveScalarPropertySpec(NamedTuple):
         )
 
 
-class NonPrimitiveScalarPropertySpec(NamedTuple):
+class NonPrimitiveScalarPropertyTypeReference(NamedTuple):
     Documentation: str
     Required: Optional[bool]
     UpdateType: UpdateType
     Type: NonPrimitivePropertyType
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveScalarPropertySpec":
-        return NonPrimitiveScalarPropertySpec(
+    def from_dict(dict_: Dict[str, Any]) -> "NonPrimitiveScalarPropertyTypeReference":
+        return NonPrimitiveScalarPropertyTypeReference(
             Documentation=dict_.get("Documentation", ""),
             Required=dict_.get("Required"),
             UpdateType=dict_["UpdateType"],
@@ -152,59 +152,59 @@ class NonPrimitiveScalarPropertySpec(NamedTuple):
         )
 
 
-class NestedPropertySpec(NamedTuple):
+class CompoundPropertyTypeDefinition(NamedTuple):
     Documentation: str
-    Properties: Dict[str, "PropertySpec"]
+    Properties: Dict[str, "PropertyTypeReference"]
 
     @staticmethod
-    def from_dict(dict_: Dict[str, Any]) -> "NestedPropertySpec":
-        return NestedPropertySpec(
+    def from_dict(dict_: Dict[str, Any]) -> "CompoundPropertyTypeDefinition":
+        return CompoundPropertyTypeDefinition(
             Documentation=dict_["Documentation"],
             Properties=_gather_properties(dict_.get("Properties", {})),
         )
 
 
-PropertySpec = Union[
-    PrimitiveScalarPropertySpec,
-    NonPrimitiveScalarPropertySpec,
-    PrimitiveListPropertySpec,
-    NonPrimitiveListPropertySpec,
-    PrimitiveMapPropertySpec,
-    NonPrimitiveMapPropertySpec,
+PropertyTypeReference = Union[
+    PrimitiveScalarPropertyTypeReference,
+    NonPrimitiveScalarPropertyTypeReference,
+    PrimitiveListPropertyTypeReference,
+    NonPrimitiveListPropertyTypeReference,
+    PrimitiveMapPropertyTypeReference,
+    NonPrimitiveMapPropertyTypeReference,
 ]
 
 
-def property_spec_from_dict(dict_: Dict[str, Any]) -> PropertySpec:
+def property_type_reference_from_dict(dict_: Dict[str, Any]) -> PropertyTypeReference:
     if "PrimitiveType" in dict_:
-        return PrimitiveScalarPropertySpec.from_dict(dict_)
+        return PrimitiveScalarPropertyTypeReference.from_dict(dict_)
 
     type_ = dict_.get("Type")
     if type_ is not None:
         # Try list
         if dict_["Type"] == "List":
             try:
-                return PrimitiveListPropertySpec.from_dict(dict_)
+                return PrimitiveListPropertyTypeReference.from_dict(dict_)
             except Exception:
                 try:
-                    return NonPrimitiveListPropertySpec.from_dict(dict_)
+                    return NonPrimitiveListPropertyTypeReference.from_dict(dict_)
                 except Exception:
                     pass
         # Try map
         elif dict_["Type"] == "Map":
             try:
-                return PrimitiveMapPropertySpec.from_dict(dict_)
+                return PrimitiveMapPropertyTypeReference.from_dict(dict_)
             except Exception:
                 try:
-                    return NonPrimitiveMapPropertySpec.from_dict(dict_)
+                    return NonPrimitiveMapPropertyTypeReference.from_dict(dict_)
                 except Exception:
                     pass
         # Try non-primitive scalar
         else:
             try:
-                return NonPrimitiveScalarPropertySpec.from_dict(dict_)
+                return NonPrimitiveScalarPropertyTypeReference.from_dict(dict_)
             except Exception:
                 pass
-    raise TypeError(f"Invalid PropertySpec dict: {dict_}")
+    raise TypeError(f"Invalid PropertyTypeReference dict: {dict_}")
 
 
 class NonPrimitiveListAttributeSpec(NamedTuple):
@@ -285,17 +285,17 @@ def attribute_spec_from_dict(dict_: Dict[str, Any]) -> AttributeSpec:
     raise ValueError("Invalid AttributeSpec dict")
 
 
-def _gather_properties(dict_: Dict[str, Any]) -> Dict[str, PropertySpec]:
+def _gather_properties(dict_: Dict[str, Any]) -> Dict[str, PropertyTypeReference]:
     return {
-        property_name: property_spec_from_dict(property_spec_dict)
-        for property_name, property_spec_dict in dict_.items()
+        property_name: property_type_reference_from_dict(property_type_reference_dict)
+        for property_name, property_type_reference_dict in dict_.items()
     }
 
 
 class ResourceSpec(NamedTuple):
     Documentation: str
     Attributes: Dict[str, AttributeSpec]
-    Properties: Dict[str, PropertySpec]
+    Properties: Dict[str, PropertyTypeReference]
 
     @staticmethod
     def from_dict(dict_: Dict[str, Any]) -> "ResourceSpec":
@@ -311,44 +311,43 @@ class ResourceSpec(NamedTuple):
         )
 
 
-# TODO: Rename NestedPropertySpec to RecordPropertySpec (or similar)
-PropertyType = Union[
-    NestedPropertySpec, PrimitiveScalarPropertySpec, NonPrimitiveListPropertySpec
+PropertyTypeDefinition = Union[
+    CompoundPropertyTypeDefinition, PrimitiveScalarPropertyTypeReference, NonPrimitiveListPropertyTypeReference
 ]
 
 
-def property_type_from_dict(dict_: Dict[str, Any]) -> PropertyType:
+def property_type_definition_from_dict(dict_: Dict[str, Any]) -> PropertyTypeDefinition:
     if "PrimitiveType" in dict_:
-        return PrimitiveScalarPropertySpec.from_dict(dict_)
+        return PrimitiveScalarPropertyTypeReference.from_dict(dict_)
     type_ = dict_.get("Type")
     if type_ is not None:
         # Try list
         if dict_["Type"] == "List":
             try:
-                return NonPrimitiveListPropertySpec.from_dict(dict_)
+                return NonPrimitiveListPropertyTypeReference.from_dict(dict_)
             except Exception:
                 pass
-    return NestedPropertySpec.from_dict(dict_)
+    return CompoundPropertyTypeDefinition.from_dict(dict_)
 
 
-def _gather_property_types(
-    property_types_dict: Dict[str, Any]
-) -> Dict[NonPrimitivePropertyType, PropertyType]:
+def _gather_property_type_definitions(
+    property_type_definitions_dict: Dict[str, Any]
+) -> Dict[NonPrimitivePropertyType, PropertyTypeDefinition]:
     return {
-        NonPrimitivePropertyType(key): property_type_from_dict(value)
-        for key, value in property_types_dict.items()
+        NonPrimitivePropertyType(key): property_type_definition_from_dict(value)
+        for key, value in property_type_definitions_dict.items()
     }
 
 
 class Specification(NamedTuple):
-    PropertyTypes: Dict[NonPrimitivePropertyType, PropertyType]
+    PropertyTypes: Dict[NonPrimitivePropertyType, PropertyTypeDefinition]
     ResourceSpecificationVersion: str
     ResourceTypes: Dict[str, ResourceSpec]
 
     @staticmethod
     def from_dict(dict_: Dict[str, Any]) -> "Specification":
         return Specification(
-            PropertyTypes=_gather_property_types(dict_["PropertyTypes"]),
+            PropertyTypes=_gather_property_type_definitions(dict_["PropertyTypes"]),
             ResourceSpecificationVersion=dict_["ResourceSpecificationVersion"],
             ResourceTypes={
                 resource_spec_name: ResourceSpec.from_dict(resource_spec_dict)
