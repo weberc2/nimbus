@@ -1,4 +1,4 @@
-from nimbus_codegen.spec import (
+from .spec import (
     NonPrimitiveListPropertyTypeReference,
     NonPrimitiveMapPropertyTypeReference,
     NonPrimitivePropertyType,

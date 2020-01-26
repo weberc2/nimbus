@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple
 
-from nimbus_codegen.ast import (
+from .ast import (
     PythonCustomStatement,
     PythonMethod,
     PythonType,
@@ -8,8 +8,8 @@ from nimbus_codegen.ast import (
     PythonTypeNewType,
     PythonTypeReference,
 )
-from nimbus_codegen.refexpr import reference_expression
-from nimbus_codegen.spec import (
+from .refexpr import reference_expression
+from .spec import (
     CompoundPropertyTypeDefinition,
     NonPrimitiveListPropertyTypeReference,
     PrimitiveScalarPropertyTypeReference,
@@ -18,7 +18,7 @@ from nimbus_codegen.spec import (
     ResourceSpec,
     Specification,
 )
-from nimbus_codegen.typeref import ToPythonTypeRef
+from .typeref import ToPythonTypeRef
 
 _Props = List[Tuple[str, PythonTypeReference]]
 
@@ -137,6 +137,6 @@ def resource_namespace(
         if name.startswith(prefix)
     ] + [
         _ToPythonType.from_resource_spec(
-            resource_id, module, spec.ResourceTypes[resource_id]
+            module, resource_id, spec.ResourceTypes[resource_id]
         )
     ]

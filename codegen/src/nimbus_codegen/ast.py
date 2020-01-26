@@ -2,7 +2,7 @@ from typing import List, NamedTuple, Optional, Tuple
 
 from typing_extensions import Protocol
 
-KEYWORDS = "None"
+KEYWORDS = ("None",)
 
 
 class _PythonTypeReference(Protocol):

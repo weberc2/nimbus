@@ -3,9 +3,9 @@ from typing import Callable, List, Set
 
 import black
 
-from nimbus_codegen.ast import PythonType
-from nimbus_codegen.spec import Specification
-from nimbus_codegen.typedef import resource_namespace
+from .ast import PythonType
+from .spec import Specification
+from .typedef import resource_namespace
 
 Formatter = Callable[[str], str]
 
@@ -45,14 +45,14 @@ def write_resources_package(
             idx = 0
         else:
             idx += len("::")
-        module = resource_type[idx + len("::") :].lower()
+        module = resource_type[idx:].lower()
 
         # Compute file path
         rt = resource_type
         if rt.startswith("AWS::"):
             rt = rt[len("AWS::") :]
         filepath = os.path.join(
-            directory, f"{resource_type.lower().replace('::', '/')}.py"
+            directory, "src", "nimbus_resources", f"{rt.lower().replace('::', '/')}.py"
         )
 
         # Make it a Python package (not to be confused with a Pypi package,

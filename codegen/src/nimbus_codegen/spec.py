@@ -259,10 +259,6 @@ AttributeSpec = Union[
 ]
 
 
-def pprint(dict_: Dict[str, Any]):
-    print(json.dumps(dict_, indent=4))
-
-
 def attribute_spec_from_dict(dict_: Dict[str, Any]) -> AttributeSpec:
     if "PrimitiveType" in dict_:
         return PrimitiveScalarAttributeSpec.from_dict(dict_)

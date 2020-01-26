@@ -1,5 +1,5 @@
-from nimbus_codegen.ast import PythonTypeReference
-from nimbus_codegen.spec import (
+from .ast import PythonTypeReference
+from .spec import (
     NonPrimitiveListPropertyTypeReference,
     NonPrimitiveMapPropertyTypeReference,
     NonPrimitivePropertyType,

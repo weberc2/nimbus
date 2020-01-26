@@ -1,5 +1,5 @@
-from nimbus_codegen.codegen import write_resources_package
-from nimbus_codegen.spec import load
+from .codegen import write_resources_package, FORMATTER_BLACK
+from .spec import load
 
 if __name__ == "__main__":
-    write_resources_package(load(), "/tmp/nimbus-resources")
+    write_resources_package(load(), "/tmp/nimbus-resources", formatter=FORMATTER_BLACK)
