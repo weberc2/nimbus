@@ -1,5 +1,5 @@
 import os
-from typing import Callable, List
+from typing import Callable, List, Set
 
 import black
 
@@ -37,7 +37,7 @@ def render_module(module: str, typedefs: List[PythonType]) -> str:
 def write_resources_package(
     spec: Specification, directory: str, formatter: Formatter = FORMATTER_NONE
 ) -> None:
-    known_packages = set()
+    known_packages: Set[str] = set()
     for resource_type in spec.ResourceTypes:
         # Compute module name
         idx = resource_type.rfind("::")

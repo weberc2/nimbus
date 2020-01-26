@@ -68,7 +68,9 @@ def _resource_to_cloudformation_method(
 
 class _ToPythonType:
     @staticmethod
-    def resource_spec(module, resource_id: str, spec: ResourceSpec) -> PythonTypeClass:
+    def from_resource_spec(
+        module: str, resource_id: str, spec: ResourceSpec
+    ) -> PythonTypeClass:
         idx = resource_id.rfind("::")
         required_props, optional_props = _property_type_refs(module, spec.Properties)
         return PythonTypeClass(
@@ -134,7 +136,7 @@ def resource_namespace(
         for name, defn in spec.PropertyTypes.items()
         if name.startswith(prefix)
     ] + [
-        _ToPythonType.resource_spec(
+        _ToPythonType.from_resource_spec(
             resource_id, module, spec.ResourceTypes[resource_id]
         )
     ]
