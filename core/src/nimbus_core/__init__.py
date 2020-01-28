@@ -4,6 +4,8 @@ from typing import NamedTuple, Optional, Union, Tuple, List, Dict, Any
 
 from typing_extensions import Literal, Protocol, runtime_checkable
 
+from .intrinsic import IntrinsicFunction
+
 
 @runtime_checkable
 class Resource(Protocol):
@@ -139,7 +141,7 @@ PropertyString = Union[str, AttributeString, ParameterString, Resource]
 
 
 def property_string_reference(
-    property_string: PropertyString
+    property_string: PropertyString,
 ) -> Union[str, Dict[str, Any]]:
     if isinstance(property_string, str):
         return property_string
@@ -167,7 +169,7 @@ PropertyInteger = Union[int, AttributeInteger, ParameterNumber]
 
 
 def property_integer_reference(
-    property_integer: PropertyInteger
+    property_integer: PropertyInteger,
 ) -> Union[int, Dict[str, Any]]:
     if isinstance(property_integer, int):
         return property_integer
@@ -183,7 +185,7 @@ PropertyDouble = Union[float, AttributeDouble, ParameterNumber]
 
 
 def property_double_reference(
-    property_double: PropertyDouble
+    property_double: PropertyDouble,
 ) -> Union[float, Dict[str, Any]]:
     if isinstance(property_double, float):
         return property_double
@@ -199,7 +201,7 @@ PropertyBoolean = Union[bool, AttributeBoolean, ParameterString]
 
 
 def property_boolean_reference(
-    property_boolean: PropertyBoolean
+    property_boolean: PropertyBoolean,
 ) -> Union[bool, Dict[str, Any]]:
     if isinstance(property_boolean, bool):
         return property_boolean
@@ -215,7 +217,7 @@ PropertyTimestamp = Union[datetime, AttributeTimestamp, ParameterString]
 
 
 def property_timestamp_reference(
-    property_timestamp: PropertyTimestamp
+    property_timestamp: PropertyTimestamp,
 ) -> Union[datetime, Dict[str, Any]]:
     if isinstance(property_timestamp, datetime):
         return property_timestamp
@@ -236,6 +238,8 @@ def property_json_reference(property_json: PropertyJSON) -> Dict[str, Any]:
             return {"Ref": value.logical_id}
         if isinstance(value, Resource):
             return {"Ref": value.logical_id}
+        if isinstance(value, IntrinsicFunction):
+            return value.intrinsic_to_cloudformation()
         if isinstance(value, dict):
             output = {}
             for k, v in value.items():

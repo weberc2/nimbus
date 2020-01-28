@@ -78,7 +78,27 @@ class _ToPythonType:
             module=module,
             required_properties=[("logical_id", BUILTIN_STR)] + required_props,
             optional_properties=optional_props,
-            methods=[_resource_to_cloudformation_method(module, resource_id, spec)],
+            methods=[
+                PythonMethod.new(
+                    # Sometimes there are '.'s in the attribute names. For
+                    # example, AWS::RedShift::Cluster has attributes
+                    # Endpoint.Address and Endpoint.Port. We could make
+                    # Cluster.GetEndpoint() return an object with
+                    # `GetAddress()` and `GetPort()` methods, but for now
+                    # replacing it with an underscore is easier.
+                    name=f"Get{attr_name.replace('.', '_')}",
+                    return_type=PythonTypeReference.new(
+                        name="AttributeString", module="nimbus_core"
+                    ),
+                    body=[
+                        PythonCustomStatement(
+                            content=f"return {{'Fn::GetAtt': f'{{self.logical_id}}.{attr_name}'}}",
+                        )
+                    ],
+                )
+                for attr_name, attr_spec in spec.Attributes.items()
+            ]
+            + [_resource_to_cloudformation_method(module, resource_id, spec)],
         )
 
     @staticmethod
@@ -101,7 +121,7 @@ class _ToPythonType:
                         body=[
                             PythonCustomStatement(content="raise NotImplementedError()")
                         ],
-                    )
+                    ),
                 ],
             )
         elif isinstance(definition, PrimitiveScalarPropertyTypeReference):

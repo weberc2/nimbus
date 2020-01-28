@@ -3,6 +3,7 @@ import json
 from nimbus_resources.iam.managedpolicy import ManagedPolicy
 from nimbus_resources.s3.bucket import Bucket
 from nimbus_core.template import Template
+from nimbus_core.intrinsic import Sub
 from nimbus_core import ParameterString
 
 bucket_name_parameter = ParameterString(
@@ -27,16 +28,7 @@ t = Template(
                         "Sid": "AllowFullAccessToBucket",
                         "Action": "s3:*",
                         "Effect": "Allow",
-                        "Resource": {
-                            "Fn::Sub": [
-                                "${BucketARN}/*",
-                                {
-                                    "BucketARN": {
-                                        "Fn::GetAtt": f"{bucket.logical_id}.Arn"
-                                    }
-                                },
-                            ]
-                        },
+                        "Resource": Sub(f"${{{bucket.GetArn()}}}/*"),
                     },
                     {
                         "Sid": "AllowUseOfTheKey",
