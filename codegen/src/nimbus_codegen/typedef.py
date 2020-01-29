@@ -10,6 +10,8 @@ from .ast import (
 )
 from .refexpr import reference_expression
 from .spec import (
+    PrimitiveScalarAttributeSpec,
+    PrimitiveType,
     CompoundPropertyTypeDefinition,
     NonPrimitiveListPropertyTypeReference,
     PrimitiveScalarPropertyTypeReference,
@@ -45,13 +47,46 @@ TYPE_REF_JSON = PythonTypeReference.dict_type_ref(
     BUILTIN_STR, PythonTypeReference.new("Any", "typing")
 )
 
+TYPE_REF_RESOURCE_LOGICAL_ID = PythonTypeReference(
+    name="Callable",
+    module="typing",
+    type_arguments=[
+        PythonTypeReference(
+            name="",
+            type_arguments=[
+                PythonTypeReference.new(name="Resource", module="nimbus_core")
+            ],
+        ),
+        BUILTIN_STR,
+    ],
+)
+TYPE_REF_PARAMETER_LOGICAL_ID = PythonTypeReference(
+    name="Callable",
+    module="typing",
+    type_arguments=[
+        PythonTypeReference(
+            name="",
+            type_arguments=[
+                PythonTypeReference.new(name="Parameter", module="nimbus_core")
+            ],
+        ),
+        BUILTIN_STR,
+    ],
+)
+
 
 def _resource_to_cloudformation_method(
     module: str, resource_id: str, spec: ResourceSpec
 ) -> PythonMethod:
     output = f"output: {TYPE_REF_JSON} = {{}}"
     for property_name, typeref in spec.Properties.items():
-        refexpr = reference_expression(module, f"self.{property_name}", typeref)
+        refexpr = reference_expression(
+            module,
+            f"self.{property_name}",
+            "resource_logical_id",
+            "parameter_logical_id",
+            typeref,
+        )
         if not typeref.Required:
             output += f"\n{property_name} = {refexpr}"
             output += f"\nif {property_name} is not None:"
@@ -61,6 +96,10 @@ def _resource_to_cloudformation_method(
     output += "\nreturn output"
     return PythonMethod.new(
         name="resource_to_cloudformation",
+        arguments=[
+            ("resource_logical_id", TYPE_REF_RESOURCE_LOGICAL_ID),
+            ("parameter_logical_id", TYPE_REF_PARAMETER_LOGICAL_ID),
+        ],
         return_type=TYPE_REF_JSON,
         body=[PythonCustomStatement(content=output)],
     )
@@ -76,7 +115,7 @@ class _ToPythonType:
         return PythonTypeClass(
             name=resource_id[0 if idx < 0 else idx + 2 :],
             module=module,
-            required_properties=[("logical_id", BUILTIN_STR)] + required_props,
+            required_properties=required_props,
             optional_properties=optional_props,
             methods=[
                 PythonMethod.new(
@@ -92,11 +131,14 @@ class _ToPythonType:
                     ),
                     body=[
                         PythonCustomStatement(
-                            content=f"return {{'Fn::GetAtt': f'{{self.logical_id}}.{attr_name}'}}",
+                            content=f"return nimbus_core.AttributeString(resource=self, attribute_name='{attr_name}')"
                         )
                     ],
                 )
                 for attr_name, attr_spec in spec.Attributes.items()
+                # TODO: Support other attribute types in addition to strings
+                # if isinstance(attr_spec, PrimitiveScalarAttributeSpec)
+                # and attr_spec.PrimitiveType == PrimitiveType.String
             ]
             + [_resource_to_cloudformation_method(module, resource_id, spec)],
         )
@@ -117,6 +159,10 @@ class _ToPythonType:
                 methods=[
                     PythonMethod.new(
                         name="reference",
+                        arguments=[
+                            ("resource_logical_id", TYPE_REF_RESOURCE_LOGICAL_ID),
+                            ("parameter_logical_id", TYPE_REF_PARAMETER_LOGICAL_ID),
+                        ],
                         return_type=TYPE_REF_JSON,
                         body=[
                             PythonCustomStatement(content="raise NotImplementedError()")
