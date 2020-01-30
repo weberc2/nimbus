@@ -2,25 +2,19 @@ import json
 
 from nimbus_resources.iam.managedpolicy import ManagedPolicy
 from nimbus_resources.s3.bucket import Bucket
-from nimbus_core.template import Template
-from nimbus_core.intrinsic import Sub
-from nimbus_core import ParameterString
+from nimbus_core import ParameterString, Template, Sub
 
-bucket_name_parameter = ParameterString(
-    logical_id="BucketName", Description="The name of the bucket"
-)
+bucket_name_parameter = ParameterString(Description="The name of the bucket")
 key_arn_parameter = ParameterString(
-    logical_id="KMSKeyARN",
     Description="The ARN of the KMS key used to encrypt the bucket",
 )
-bucket = Bucket(logical_id="Bucket", BucketName=bucket_name_parameter)
+bucket = Bucket(BucketName=bucket_name_parameter)
 t = Template(
     description="S3 Bucket Template",
-    parameters=[bucket_name_parameter],
-    resources=[
-        bucket,
-        ManagedPolicy(
-            logical_id="BucketPolicy",
+    parameters={"BucketName": bucket_name_parameter, "KMSKeyARN": key_arn_parameter},
+    resources={
+        "Bucket": bucket,
+        "BucketPolicy": ManagedPolicy(
             PolicyDocument={
                 "Version": "2012-10-17",
                 "Statement": [
@@ -28,7 +22,7 @@ t = Template(
                         "Sid": "AllowFullAccessToBucket",
                         "Action": "s3:*",
                         "Effect": "Allow",
-                        "Resource": Sub(f"${{{bucket.GetArn()}}}/*"),
+                        "Resource": Sub(f"${{BucketARN}}/*", BucketARN=bucket.GetArn()),
                     },
                     {
                         "Sid": "AllowUseOfTheKey",
@@ -56,6 +50,6 @@ t = Template(
                 ],
             },
         ),
-    ],
+    },
 )
 print(json.dumps(t.template_to_cloudformation(), indent=4))
