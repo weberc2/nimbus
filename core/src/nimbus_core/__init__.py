@@ -1,6 +1,6 @@
-import typing
 from datetime import datetime
-from typing import NamedTuple, Optional, Union, Tuple, List, Dict, Any, Callable
+import typing
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
 
 from typing_extensions import Literal, Protocol, runtime_checkable
 
@@ -9,14 +9,6 @@ from typing_extensions import Literal, Protocol, runtime_checkable
 class Resource(Protocol):
     def resource_to_cloudformation(
         self, resource_logical_id: Callable[["Resource"], str]
-    ) -> Dict[str, Any]:
-        ...
-
-
-@runtime_checkable
-class IntrinsicFunction(Protocol):
-    def intrinsic_to_cloudformation(
-        self, resource_logical_id: Callable[[Resource], str]
     ) -> Dict[str, Any]:
         ...
 
@@ -118,12 +110,68 @@ class AttributeJSON(Attribute):
     pass
 
 
-def reference_resource(logical_id: str) -> Dict[str, Any]:
+def _ref(logical_id: str) -> Dict[str, Any]:
     return {"Ref": logical_id}
 
 
-PROPERTY_STRING_TYPES = (str, AttributeString, ParameterString, Resource)
-PropertyString = Union[str, AttributeString, ParameterString, Resource]
+@runtime_checkable
+class IntrinsicFunction(Protocol):
+    def intrinsic_to_cloudformation(
+        self,
+        resource_logical_id: Callable[[Resource], str],
+        parameter_logical_id: Callable[["Parameter"], str],
+    ) -> Dict[str, Any]:
+        ...
+
+
+Substitutable = Union[
+    Resource, Attribute, Parameter,
+]
+
+
+def substitutable_to_cloudformation(
+    substitutable: Substitutable,
+    resource_logical_id: Callable[[Resource], str],
+    parameter_logical_id: Callable[[Parameter], str],
+) -> Dict[str, Any]:
+    if isinstance(substitutable, Resource):
+        return _ref(resource_logical_id(substitutable))
+    if isinstance(substitutable, Attribute):
+        return substitutable.attribute_to_cloudformation(resource_logical_id)
+    if isinstance(substitutable, PARAMETER_TYPES):
+        return _ref(parameter_logical_id(substitutable))
+    raise TypeError(
+        f"Invalid Substitutable: {substitutable} (type={type(substitutable)})"
+    )
+
+
+class Sub:
+    def __init__(self, format_string: str, **substitutes: Substitutable) -> None:
+        self.format_string = format_string
+        self.substitutes = dict(substitutes)
+
+    def intrinsic_to_cloudformation(
+        self,
+        resource_logical_id: Callable[[Resource], str],
+        parameter_logical_id: Callable[[Parameter], str],
+    ) -> Dict[str, Any]:
+        return {
+            "Fn::Sub": [
+                self.format_string,
+                {
+                    key: substitutable_to_cloudformation(
+                        value, resource_logical_id, parameter_logical_id
+                    )
+                    for key, value in self.substitutes.items()
+                },
+            ]
+            if len(self.substitutes) > 0
+            else self.format_string
+        }
+
+
+PROPERTY_STRING_TYPES = (str, AttributeString, ParameterString, Sub, Resource)
+PropertyString = Union[str, AttributeString, ParameterString, "Sub", Resource]
 
 
 def property_string_reference(
@@ -134,9 +182,13 @@ def property_string_reference(
     if isinstance(property_string, str):
         return property_string
     if isinstance(property_string, ParameterString):
-        return {"Ref": parameter_logical_id(property_string)}
+        return _ref(parameter_logical_id(property_string))
+    if isinstance(property_string, Sub):
+        return property_string.intrinsic_to_cloudformation(
+            resource_logical_id, parameter_logical_id
+        )
     if isinstance(property_string, Resource):
-        return reference_resource(resource_logical_id(property_string))
+        return _ref(resource_logical_id(property_string))
     # TODO: handle AttributeString
     raise TypeError(
         f"Invalid PropertyString: {property_string} ({type(property_string)})"
@@ -153,7 +205,7 @@ def property_long_reference(
     if isinstance(property_long, int):
         return property_long
     if isinstance(property_long, ParameterNumber):
-        return {"Ref": parameter_logical_id(property_long)}
+        return _ref(parameter_logical_id(property_long))
     # TODO: handle AttributeLong
     raise TypeError(f"Invalid PropertyLong: {property_long} ({type(property_long)})")
 
@@ -168,7 +220,7 @@ def property_integer_reference(
     if isinstance(property_integer, int):
         return property_integer
     if isinstance(property_integer, ParameterNumber):
-        return {"Ref": parameter_logical_id(property_integer)}
+        return _ref(parameter_logical_id(property_integer))
     # TODO: handle AttributeInteger
     raise TypeError(
         f"Invalid PropertyInteger: {property_integer} ({type(property_integer)})"
@@ -185,7 +237,7 @@ def property_double_reference(
     if isinstance(property_double, float):
         return property_double
     if isinstance(property_double, ParameterNumber):
-        return {"Ref": parameter_logical_id(property_double)}
+        return _ref(parameter_logical_id(property_double))
     # TODO: handle AttributeDouble
     raise TypeError(
         f"Invalid PropertyDouble: {property_double} ({type(property_double)})"
@@ -202,7 +254,7 @@ def property_boolean_reference(
     if isinstance(property_boolean, bool):
         return property_boolean
     if isinstance(property_boolean, ParameterString):
-        return {"Ref": parameter_logical_id(property_boolean)}
+        return _ref(parameter_logical_id(property_boolean))
     # TODO: handle AttributeBoolean
     raise TypeError(
         f"Invalid PropertyBoolean: {property_boolean} ({type(property_boolean)})"
@@ -220,7 +272,7 @@ def property_timestamp_reference(
     if isinstance(property_timestamp, datetime):
         return property_timestamp
     if isinstance(property_timestamp, ParameterString):
-        return {"Ref": parameter_logical_id(property_timestamp)}
+        return _ref(parameter_logical_id(property_timestamp))
     # TODO: handle AttributeTimestamp
     raise TypeError(
         f"Invalid PropertyTimestamp: {property_timestamp} ({type(property_timestamp)})"
@@ -230,6 +282,10 @@ def property_timestamp_reference(
 PropertyJSON = Dict[str, Any]
 
 
+class JSONSerializationErr(Exception):
+    pass
+
+
 def property_json_reference(
     property_json: PropertyJSON,
     resource_logical_id: typing.Callable[[Resource], str],
@@ -237,13 +293,15 @@ def property_json_reference(
 ) -> Dict[str, Any]:
     def _process_value(value: Any) -> Any:
         if isinstance(value, PARAMETER_TYPES):
-            return parameter_logical_id(value)
+            return _ref(parameter_logical_id(value))
         if isinstance(value, Resource):
-            return reference_resource(resource_logical_id(value))
+            return _ref(resource_logical_id(value))
         if isinstance(value, Attribute):
             return value.attribute_to_cloudformation(resource_logical_id)
         if isinstance(value, IntrinsicFunction):
-            return value.intrinsic_to_cloudformation(resource_logical_id)
+            return value.intrinsic_to_cloudformation(
+                resource_logical_id, parameter_logical_id
+            )
         if isinstance(value, PROPERTY_BOOLEAN_TYPES):
             return property_boolean_reference(value, parameter_logical_id)
         if isinstance(value, PROPERTY_DOUBLE_TYPES):
@@ -263,27 +321,27 @@ def property_json_reference(
             for k, v in value.items():
                 try:
                     output[k] = _process_value(v)
-                except TypeError as e:
-                    raise TypeError(f"In key {k}: {e}")
+                except JSONSerializationErr as e:
+                    raise JSONSerializationErr(f"In key {k}: {e}")
             return output
         if isinstance(value, list):
             output = []
             for i, x in enumerate(value):
                 try:
                     output.append(_process_value(x))
-                except TypeError as e:
-                    raise TypeError(f"At index {i}: {e}")
+                except JSONSerializationErr as e:
+                    raise JSONSerializationErr(f"At index {i}: {e}")
             return output
         if value is None or isinstance(value, (bool, int, float, str)):
             return value
-        raise TypeError(
+        raise JSONSerializationErr(
             f"{value} (of type {type(value)}) is not a valid JSON node type"
         )
 
     try:
         return _process_value(property_json)
-    except TypeError as e:
-        raise TypeError(f"Invalid JSON object: {e}")
+    except JSONSerializationErr as e:
+        raise JSONSerializationErr(f"Invalid JSON object: {e}")
 
 
 class Tag(typing.NamedTuple):
@@ -300,42 +358,6 @@ class Tag(typing.NamedTuple):
             "Value": property_string_reference(
                 self.Value, resource_logical_id, parameter_logical_id
             ),
-        }
-
-
-Substitutable = Union[
-    Resource, Attribute, Parameter,
-]
-
-
-def substitutable_to_cloudformation(
-    substitutable: Substitutable, resource_logical_id: Callable[[Resource], str]
-) -> Dict[str, Any]:
-    if isinstance(substitutable, Resource):
-        return reference_resource(resource_logical_id(substitutable))
-    if isinstance(substitutable, Attribute):
-        return substitutable.attribute_to_cloudformation(resource_logical_id)
-    return parameter_to_cloudformation(substitutable)
-
-
-class Sub:
-    def __init__(self, format_string: str, **substitutes: Substitutable) -> None:
-        self.format_string = format_string
-        self.substitutes = dict(substitutes)
-
-    def intrinsic_to_cloudformation(
-        self, resource_logical_id: Callable[[Resource], str]
-    ) -> Dict[str, Any]:
-        return {
-            "Fn::Sub": [
-                self.format_string,
-                {
-                    key: substitutable_to_cloudformation(value, resource_logical_id)
-                    for key, value in self.substitutes.items()
-                },
-            ]
-            if len(self.substitutes) > 0
-            else self.format_string
         }
 
 
