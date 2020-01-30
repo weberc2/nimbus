@@ -148,9 +148,22 @@ class _ToPythonType:
         module: str, name: str, definition: PropertyTypeDefinition
     ) -> PythonType:
         if isinstance(definition, CompoundPropertyTypeDefinition):
+            RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
+            PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
             required_props, optional_props = _property_type_refs(
                 module, definition.Properties
             )
+            output = "return {"
+            for property_name, property_type_reference in definition.Properties.items():
+                refexpr = reference_expression(
+                    module=module,
+                    property_variable=f"self.{property_name}",
+                    resource_logical_id_variable=RESOURCE_LOGICAL_ID_VARIABLE,
+                    parameter_logical_id_variable=PARAMETER_LOGICAL_ID_VARIABLE,
+                    property_type_reference=property_type_reference,
+                )
+                output += f"\n    '{property_name}': {refexpr},"
+            output += "\n}"
             return PythonTypeClass(
                 name=name,
                 module=module,
@@ -160,13 +173,17 @@ class _ToPythonType:
                     PythonMethod.new(
                         name="reference",
                         arguments=[
-                            ("resource_logical_id", TYPE_REF_RESOURCE_LOGICAL_ID),
-                            ("parameter_logical_id", TYPE_REF_PARAMETER_LOGICAL_ID),
+                            (
+                                RESOURCE_LOGICAL_ID_VARIABLE,
+                                TYPE_REF_RESOURCE_LOGICAL_ID,
+                            ),
+                            (
+                                PARAMETER_LOGICAL_ID_VARIABLE,
+                                TYPE_REF_PARAMETER_LOGICAL_ID,
+                            ),
                         ],
                         return_type=TYPE_REF_JSON,
-                        body=[
-                            PythonCustomStatement(content="raise NotImplementedError()")
-                        ],
+                        body=[PythonCustomStatement(content=output)],
                     ),
                 ],
             )
