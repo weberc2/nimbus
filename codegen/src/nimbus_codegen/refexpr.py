@@ -50,7 +50,7 @@ def _primitive_type_reference_expression(
         )
     if primitive_type == PrimitiveType.Timestamp:
         return (
-            f"property_timestamp_reference({property_variable}, "
+            f"nimbus_core.property_timestamp_reference({property_variable}, "
             f"{parameter_logical_id_variable})"
         )
     raise TypeError(f"Invalid PrimitiveType: {primitive_type} ({type(primitive_type)})")

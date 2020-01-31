@@ -7,6 +7,7 @@ from .ast import (
     PythonTypeClass,
     PythonTypeNewType,
     PythonTypeReference,
+    KEYWORDS,
 )
 from .refexpr import reference_expression
 from .spec import (
@@ -83,6 +84,8 @@ def _properties_dict(
 ) -> str:
     output = f"output: {TYPE_REF_JSON} = {{}}"
     for property_name, typeref in properties.items():
+        if property_name in KEYWORDS:
+            property_name += "_"
         refexpr = reference_expression(
             module,
             f"self.{property_name}",
@@ -102,20 +105,20 @@ def _properties_dict(
 def _resource_to_cloudformation_method(
     module: str, resource_id: str, spec: ResourceSpec
 ) -> PythonMethod:
-    resource_logical_id_variable = "resource_logical_id"
-    parameter_logical_id_variable = "parameter_logical_id"
+    RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
+    PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
     output = _properties_dict(
         module,
-        resource_logical_id_variable,
-        parameter_logical_id_variable,
+        RESOURCE_LOGICAL_ID_VARIABLE,
+        PARAMETER_LOGICAL_ID_VARIABLE,
         spec.Properties,
     )
     output += f"\nreturn {{'Type': '{resource_id}', 'Properties': output}}"
     return PythonMethod.new(
         name="resource_to_cloudformation",
         arguments=[
-            (resource_logical_id_variable, TYPE_REF_RESOURCE_LOGICAL_ID),
-            (parameter_logical_id_variable, TYPE_REF_PARAMETER_LOGICAL_ID),
+            (RESOURCE_LOGICAL_ID_VARIABLE, TYPE_REF_RESOURCE_LOGICAL_ID),
+            (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_REF_PARAMETER_LOGICAL_ID),
         ],
         return_type=TYPE_REF_JSON,
         body=[PythonCustomStatement(content=output)],

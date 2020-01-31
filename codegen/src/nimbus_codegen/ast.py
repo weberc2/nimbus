@@ -121,6 +121,14 @@ class PythonMethod(NamedTuple):
             output += f"\n{stmt.serialize_python_statement(indent+'    ')}"
         return output
 
+    def modules(self) -> List[str]:
+        # TODO: this doesn't account for modules depended upon by the body
+        modules = self.return_type.modules()
+        if self.arguments is not None:
+            for _, argtype in self.arguments:
+                modules.extend(argtype.modules())
+        return modules
+
 
 class PythonTypeClass(NamedTuple):
     name: str
@@ -149,6 +157,7 @@ class PythonTypeClass(NamedTuple):
             imports.extend(property_type.modules())
         for method in self.methods:
             output += f"\n{method.serialize_python_method_definition(indent+'    ')}"
+            imports.extend(method.modules())
         return output, imports
 
 

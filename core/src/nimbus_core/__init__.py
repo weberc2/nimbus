@@ -8,7 +8,9 @@ from typing_extensions import Literal, Protocol, runtime_checkable
 @runtime_checkable
 class Resource(Protocol):
     def resource_to_cloudformation(
-        self, resource_logical_id: Callable[["Resource"], str]
+        self,
+        resource_logical_id: Callable[["Resource"], str],
+        parameter_logical_id: Callable[["Parameter"], str],
     ) -> Dict[str, Any]:
         ...
 
@@ -121,7 +123,7 @@ Parameter = Union[
 
 
 def parameter_to_cloudformation(parameter: Parameter) -> Dict[str, Any]:
-    output = {"Type": parameter.Type}
+    output: Dict[str, Any] = {"Type": parameter.Type}
     if parameter.Description is not None:
         output["Description"] = parameter.Description
     if parameter.Default is not None:
@@ -186,7 +188,7 @@ class IntrinsicFunction(Protocol):
 
 
 Substitutable = Union[
-    Resource, Attribute, Parameter,
+    Resource, "PropertyString", Attribute, Parameter
 ]
 
 
@@ -197,6 +199,8 @@ def substitutable_to_cloudformation(
 ) -> Dict[str, Any]:
     if isinstance(substitutable, Resource):
         return _ref(resource_logical_id(substitutable))
+    if isinstance(substitutable, PROPERTY_STRING_TYPES):
+        return property_string_reference(substitutable)
     if isinstance(substitutable, Attribute):
         return substitutable.attribute_to_cloudformation(resource_logical_id)
     if isinstance(substitutable, PARAMETER_TYPES):
@@ -351,7 +355,7 @@ def property_json_reference(
     property_json: PropertyJSON,
     resource_logical_id: typing.Callable[[Resource], str],
     parameter_logical_id: typing.Callable[[Parameter], str],
-) -> Dict[str, Any]:
+) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     def _process_value(value: Any) -> Any:
         if isinstance(value, PARAMETER_TYPES):
             return _ref(parameter_logical_id(value))
@@ -378,21 +382,21 @@ def property_json_reference(
         if isinstance(value, PROPERTY_TIMESTAMP_TYPES):
             return property_timestamp_reference(value, parameter_logical_id)
         if isinstance(value, dict):
-            output = {}
+            output_dict = {}
             for k, v in value.items():
                 try:
-                    output[k] = _process_value(v)
+                    output_dict[k] = _process_value(v)
                 except JSONSerializationErr as e:
                     raise JSONSerializationErr(f"In key {k}: {e}")
-            return output
+            return output_dict
         if isinstance(value, list):
-            output = []
+            output_list: List[Dict[str, Any]] = []
             for i, x in enumerate(value):
                 try:
-                    output.append(_process_value(x))
+                    output_list.append(_process_value(x))
                 except JSONSerializationErr as e:
                     raise JSONSerializationErr(f"At index {i}: {e}")
-            return output
+            return output_list
         if value is None or isinstance(value, (bool, int, float, str)):
             return value
         raise JSONSerializationErr(
@@ -412,7 +416,7 @@ class Tag(typing.NamedTuple):
     def reference(
         self,
         resource_logical_id: Callable[[Resource], str],
-        parameter_logical_id: Callable[[Resource], str],
+        parameter_logical_id: Callable[[Parameter], str],
     ) -> Dict[str, Any]:
         return {
             "Key": self.Key,

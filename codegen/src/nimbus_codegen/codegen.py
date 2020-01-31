@@ -74,6 +74,11 @@ def write_resources_package(
                 )
             )
 
+    with open(
+        os.path.join(directory, "src", "nimbus_resources", "__init__.py"), "w"
+    ) as f:
+        f.write("")
+
     with open(os.path.join(directory, "setup.py"), "w") as f:
         f.write(
             """import os
