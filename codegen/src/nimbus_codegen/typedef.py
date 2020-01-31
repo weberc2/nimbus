@@ -75,16 +75,19 @@ TYPE_REF_PARAMETER_LOGICAL_ID = PythonTypeReference(
 )
 
 
-def _resource_to_cloudformation_method(
-    module: str, resource_id: str, spec: ResourceSpec
-) -> PythonMethod:
+def _properties_dict(
+    module: str,
+    resource_logical_id_variable: str,
+    parameter_logical_id_variable: str,
+    properties: Dict[str, PropertyTypeReference],
+) -> str:
     output = f"output: {TYPE_REF_JSON} = {{}}"
-    for property_name, typeref in spec.Properties.items():
+    for property_name, typeref in properties.items():
         refexpr = reference_expression(
             module,
             f"self.{property_name}",
-            "resource_logical_id",
-            "parameter_logical_id",
+            resource_logical_id_variable,
+            parameter_logical_id_variable,
             typeref,
         )
         if not typeref.Required:
@@ -93,12 +96,26 @@ def _resource_to_cloudformation_method(
             output += f"\n     output['{property_name}'] = {property_name}"
         else:
             output += f"\noutput['{property_name}'] = {refexpr}"
-    output += "\nreturn output"
+    return output
+
+
+def _resource_to_cloudformation_method(
+    module: str, resource_id: str, spec: ResourceSpec
+) -> PythonMethod:
+    resource_logical_id_variable = "resource_logical_id"
+    parameter_logical_id_variable = "parameter_logical_id"
+    output = _properties_dict(
+        module,
+        resource_logical_id_variable,
+        parameter_logical_id_variable,
+        spec.Properties,
+    )
+    output += f"\nreturn {{'Type': '{resource_id}', 'Properties': output}}"
     return PythonMethod.new(
         name="resource_to_cloudformation",
         arguments=[
-            ("resource_logical_id", TYPE_REF_RESOURCE_LOGICAL_ID),
-            ("parameter_logical_id", TYPE_REF_PARAMETER_LOGICAL_ID),
+            (resource_logical_id_variable, TYPE_REF_RESOURCE_LOGICAL_ID),
+            (parameter_logical_id_variable, TYPE_REF_PARAMETER_LOGICAL_ID),
         ],
         return_type=TYPE_REF_JSON,
         body=[PythonCustomStatement(content=output)],
@@ -148,22 +165,18 @@ class _ToPythonType:
         module: str, name: str, definition: PropertyTypeDefinition
     ) -> PythonType:
         if isinstance(definition, CompoundPropertyTypeDefinition):
-            RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
-            PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
             required_props, optional_props = _property_type_refs(
                 module, definition.Properties
             )
-            output = "return {"
-            for property_name, property_type_reference in definition.Properties.items():
-                refexpr = reference_expression(
-                    module=module,
-                    property_variable=f"self.{property_name}",
-                    resource_logical_id_variable=RESOURCE_LOGICAL_ID_VARIABLE,
-                    parameter_logical_id_variable=PARAMETER_LOGICAL_ID_VARIABLE,
-                    property_type_reference=property_type_reference,
-                )
-                output += f"\n    '{property_name}': {refexpr},"
-            output += "\n}"
+            RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
+            PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
+            output = _properties_dict(
+                module,
+                RESOURCE_LOGICAL_ID_VARIABLE,
+                PARAMETER_LOGICAL_ID_VARIABLE,
+                definition.Properties,
+            )
+            output += "\nreturn output"
             return PythonTypeClass(
                 name=name,
                 module=module,
