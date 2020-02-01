@@ -70,13 +70,6 @@ class Stmt(Protocol):
         ...
 
 
-class CustomStmt(NamedTuple):
-    content: str
-
-    def serialize_stmt(self) -> str:
-        return self.content
-
-
 class Block(NamedTuple):
     stmts: List[Stmt]
 
@@ -274,13 +267,6 @@ class IfExpr(NamedTuple):
 
     def serialize_expr(self) -> str:
         return f"{self.true_value.serialize_expr()} if {self.condition.serialize_expr()} else {self.false_value.serialize_expr()}"
-
-
-class CustomExpr(NamedTuple):
-    contents: str
-
-    def serialize_expr(self) -> str:
-        return self.contents
 
 
 class IsNotExpr(NamedTuple):

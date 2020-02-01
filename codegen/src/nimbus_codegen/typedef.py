@@ -180,8 +180,17 @@ class _ToPythonType:
                     ),
                     body=py.Block(
                         [
-                            py.CustomStmt(
-                                content=f"return nimbus_core.AttributeString(resource=self, attribute_name='{attr_name}')"
+                            py.ReturnStmt(
+                                py.CallExpr(
+                                    fn=py.Attr(
+                                        parent=py.Variable("nimbus_core"),
+                                        label="AttributeString",
+                                    ),
+                                    args=[
+                                        py.Variable("self"),
+                                        py.StringLiteral(attr_name),
+                                    ],
+                                )
                             )
                         ]
                     ),
