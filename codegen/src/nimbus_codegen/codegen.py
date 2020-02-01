@@ -3,7 +3,7 @@ from typing import Callable, List, Set
 
 import black
 
-from .ast import PythonType
+import nimbus_codegen.ast as py
 from .spec import Specification
 from .typedef import resource_namespace
 
@@ -20,12 +20,12 @@ def FORMATTER_BLACK(s: str) -> str:
     )
 
 
-def render_module(module: str, typedefs: List[PythonType]) -> str:
+def render_module(module: str, typedefs: List[py.TypeDef]) -> str:
     typedef_output = ""
     import_output = f"from . import {module}"
     imports = {module}
     for typedef in typedefs:
-        typedefstr, typedefimports = typedef.serialize_python_type_definition()
+        typedefstr, typedefimports = typedef.serialize_type_def()
         typedef_output += f"\n\n{typedefstr}"
         for import_ in typedefimports:
             if import_ not in imports:

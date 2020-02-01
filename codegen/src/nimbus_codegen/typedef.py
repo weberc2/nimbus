@@ -1,14 +1,6 @@
 from typing import Dict, List, Tuple
 
-from .ast import (
-    PythonCustomStatement,
-    PythonMethod,
-    PythonType,
-    PythonTypeClass,
-    PythonTypeNewType,
-    PythonTypeReference,
-    KEYWORDS,
-)
+import nimbus_codegen.ast as py
 from .refexpr import reference_expression
 from .spec import (
     PrimitiveScalarAttributeSpec,
@@ -21,9 +13,9 @@ from .spec import (
     ResourceSpec,
     Specification,
 )
-from .typeref import ToPythonTypeRef
+from .typeref import ToPythonType
 
-_Props = List[Tuple[str, PythonTypeReference]]
+_Props = List[Tuple[str, py.Type]]
 
 
 def _property_type_refs(
@@ -32,7 +24,7 @@ def _property_type_refs(
     required = []
     optional = []
     for property_name, typeref in props.items():
-        property_python_type_reference = ToPythonTypeRef.from_property(
+        property_python_type_reference = ToPythonType.from_property(
             property_name, module, typeref
         )
         # All other property spec types have a `Required` attribute
@@ -43,33 +35,27 @@ def _property_type_refs(
     return required, optional
 
 
-BUILTIN_STR = PythonTypeReference.new("str", None)
-TYPE_REF_JSON = PythonTypeReference.dict_type_ref(
-    BUILTIN_STR, PythonTypeReference.new("Any", "typing")
-)
+BUILTIN_STR = py.Type.new("str", None)
+TYPE_JSON = py.Type.dict_type_ref(BUILTIN_STR, py.Type.new("Any", "typing"))
 
-TYPE_REF_RESOURCE_LOGICAL_ID = PythonTypeReference(
+TYPE_RESOURCE_LOGICAL_ID = py.Type(
     name="Callable",
     module="typing",
     type_arguments=[
-        PythonTypeReference(
+        py.Type(
             name="",
-            type_arguments=[
-                PythonTypeReference.new(name="Resource", module="nimbus_core")
-            ],
+            type_arguments=[py.Type.new(name="Resource", module="nimbus_core")],
         ),
         BUILTIN_STR,
     ],
 )
-TYPE_REF_PARAMETER_LOGICAL_ID = PythonTypeReference(
+TYPE_PARAMETER_LOGICAL_ID = py.Type(
     name="Callable",
     module="typing",
     type_arguments=[
-        PythonTypeReference(
+        py.Type(
             name="",
-            type_arguments=[
-                PythonTypeReference.new(name="Parameter", module="nimbus_core")
-            ],
+            type_arguments=[py.Type.new(name="Parameter", module="nimbus_core")],
         ),
         BUILTIN_STR,
     ],
@@ -82,9 +68,9 @@ def _properties_dict(
     parameter_logical_id_variable: str,
     properties: Dict[str, PropertyTypeReference],
 ) -> str:
-    output = f"output: {TYPE_REF_JSON} = {{}}"
+    output = f"output: {TYPE_JSON} = {{}}"
     for property_name, typeref in properties.items():
-        if property_name in KEYWORDS:
+        if property_name in py.KEYWORDS:
             property_name += "_"
         refexpr = reference_expression(
             module,
@@ -104,7 +90,7 @@ def _properties_dict(
 
 def _resource_to_cloudformation_method(
     module: str, resource_id: str, spec: ResourceSpec
-) -> PythonMethod:
+) -> py.Method:
     RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
     PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
     output = _properties_dict(
@@ -114,14 +100,14 @@ def _resource_to_cloudformation_method(
         spec.Properties,
     )
     output += f"\nreturn {{'Type': '{resource_id}', 'Properties': output}}"
-    return PythonMethod.new(
+    return py.Method.new(
         name="resource_to_cloudformation",
         arguments=[
-            (RESOURCE_LOGICAL_ID_VARIABLE, TYPE_REF_RESOURCE_LOGICAL_ID),
-            (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_REF_PARAMETER_LOGICAL_ID),
+            (RESOURCE_LOGICAL_ID_VARIABLE, TYPE_RESOURCE_LOGICAL_ID),
+            (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_PARAMETER_LOGICAL_ID),
         ],
-        return_type=TYPE_REF_JSON,
-        body=[PythonCustomStatement(content=output)],
+        return_type=TYPE_JSON,
+        body=[py.CustomStmt(content=output)],
     )
 
 
@@ -129,16 +115,16 @@ class _ToPythonType:
     @staticmethod
     def from_resource_spec(
         module: str, resource_id: str, spec: ResourceSpec
-    ) -> PythonTypeClass:
+    ) -> py.ClassDef:
         idx = resource_id.rfind("::")
         required_props, optional_props = _property_type_refs(module, spec.Properties)
-        return PythonTypeClass(
+        return py.ClassDef(
             name=resource_id[0 if idx < 0 else idx + 2 :],
             module=module,
             required_properties=required_props,
             optional_properties=optional_props,
             methods=[
-                PythonMethod.new(
+                py.Method.new(
                     # Sometimes there are '.'s in the attribute names. For
                     # example, AWS::RedShift::Cluster has attributes
                     # Endpoint.Address and Endpoint.Port. We could make
@@ -146,11 +132,11 @@ class _ToPythonType:
                     # `GetAddress()` and `GetPort()` methods, but for now
                     # replacing it with an underscore is easier.
                     name=f"Get{attr_name.replace('.', '_')}",
-                    return_type=PythonTypeReference.new(
+                    return_type=py.Type.new(
                         name="AttributeString", module="nimbus_core"
                     ),
                     body=[
-                        PythonCustomStatement(
+                        py.CustomStmt(
                             content=f"return nimbus_core.AttributeString(resource=self, attribute_name='{attr_name}')"
                         )
                     ],
@@ -166,7 +152,7 @@ class _ToPythonType:
     @staticmethod
     def from_property_type(
         module: str, name: str, definition: PropertyTypeDefinition
-    ) -> PythonType:
+    ) -> py.TypeDef:
         if isinstance(definition, CompoundPropertyTypeDefinition):
             required_props, optional_props = _property_type_refs(
                 module, definition.Properties
@@ -180,42 +166,34 @@ class _ToPythonType:
                 definition.Properties,
             )
             output += "\nreturn output"
-            return PythonTypeClass(
+            return py.ClassDef(
                 name=name,
                 module=module,
                 required_properties=required_props,
                 optional_properties=optional_props,
                 methods=[
-                    PythonMethod.new(
+                    py.Method.new(
                         name="reference",
                         arguments=[
-                            (
-                                RESOURCE_LOGICAL_ID_VARIABLE,
-                                TYPE_REF_RESOURCE_LOGICAL_ID,
-                            ),
-                            (
-                                PARAMETER_LOGICAL_ID_VARIABLE,
-                                TYPE_REF_PARAMETER_LOGICAL_ID,
-                            ),
+                            (RESOURCE_LOGICAL_ID_VARIABLE, TYPE_RESOURCE_LOGICAL_ID,),
+                            (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_PARAMETER_LOGICAL_ID,),
                         ],
-                        return_type=TYPE_REF_JSON,
-                        body=[PythonCustomStatement(content=output)],
+                        return_type=TYPE_JSON,
+                        body=[py.CustomStmt(content=output)],
                     ),
                 ],
             )
         elif isinstance(definition, PrimitiveScalarPropertyTypeReference):
-            return PythonTypeNewType(
+            return py.NewTypeDef(
                 name=name,
                 module=module,
-                parent_type=ToPythonTypeRef.from_primitive_type(
-                    definition.PrimitiveType
-                ),
+                parent_type=ToPythonType.from_primitive_type(definition.PrimitiveType),
             )
         elif isinstance(definition, NonPrimitiveListPropertyTypeReference):
-            return PythonTypeNewType(
+            return py.NewTypeDef(
                 name=name,
                 module=module,
-                parent_type=ToPythonTypeRef.from_non_primitive_list_property(
+                parent_type=ToPythonType.from_non_primitive_list_property(
                     module, definition
                 ),
             )
@@ -226,7 +204,7 @@ class _ToPythonType:
 
 def resource_namespace(
     module: str, spec: Specification, resource_id: str
-) -> List[PythonType]:
+) -> List[py.TypeDef]:
     # Build type definitions for all property types in the resource's namespace
     # as well as the type definition for the resource itself.
     prefix = f"{resource_id}."

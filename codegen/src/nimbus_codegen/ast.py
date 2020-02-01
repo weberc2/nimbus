@@ -5,7 +5,7 @@ from typing_extensions import Protocol
 KEYWORDS = ("None",)
 
 
-class _PythonTypeReference(Protocol):
+class _Type(Protocol):
     """Workaround for mypy's lack of support for recursive types."""
 
     def __str__(self) -> str:
@@ -15,36 +15,30 @@ class _PythonTypeReference(Protocol):
         ...
 
 
-class PythonTypeReference(NamedTuple):
+class Type(NamedTuple):
     name: str
-    type_arguments: List["_PythonTypeReference"]
+    type_arguments: List["_Type"]
     module: Optional[str] = None
 
     @staticmethod
     def new(
         name: str,
         module: Optional[str] = None,
-        type_arguments: Optional[List[_PythonTypeReference]] = None,
-    ) -> "PythonTypeReference":
-        return PythonTypeReference(
+        type_arguments: Optional[List[_Type]] = None,
+    ) -> "Type":
+        return Type(
             name=name,
             module=module,
             type_arguments=[] if type_arguments is None else type_arguments,
         )
 
     @staticmethod
-    def dict_type_ref(
-        key_type: "PythonTypeReference", value_type: "PythonTypeReference"
-    ) -> "PythonTypeReference":
-        return PythonTypeReference(
-            name="Dict", type_arguments=[key_type, value_type], module="typing"
-        )
+    def dict_type_ref(key_type: "Type", value_type: "Type") -> "Type":
+        return Type(name="Dict", type_arguments=[key_type, value_type], module="typing")
 
     @staticmethod
-    def list_type_ref(item_type: "PythonTypeReference") -> "PythonTypeReference":
-        return PythonTypeReference(
-            name="List", type_arguments=[item_type], module="typing"
-        )
+    def list_type_ref(item_type: "Type") -> "Type":
+        return Type(name="List", type_arguments=[item_type], module="typing")
 
     def __str__(self) -> str:
         base = f"{self.name}"
@@ -61,52 +55,47 @@ class PythonTypeReference(NamedTuple):
         return modules
 
 
-class PythonType(Protocol):
-    def python_type_reference(self) -> PythonTypeReference:
-        ...
-
-    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
+class TypeDef(Protocol):
+    def serialize_type_def(self) -> Tuple[str, List[str]]:
         ...
 
 
-class PythonStatement(Protocol):
-    def serialize_python_statement(self) -> str:
+class Stmt(Protocol):
+    def serialize_stmt(self) -> str:
         ...
 
 
-class PythonCustomStatement(NamedTuple):
+class CustomStmt(NamedTuple):
     content: str
 
-    def serialize_python_statement(self) -> str:
+    def serialize_stmt(self) -> str:
         return self.content
 
 
-class PythonMethod(NamedTuple):
+class Method(NamedTuple):
     name: str
-    arguments: List[Tuple[str, PythonTypeReference]]
-    return_type: PythonTypeReference
-    body: List[PythonStatement]
+    arguments: List[Tuple[str, Type]]
+    return_type: Type
+    body: List[Stmt]
     decorators: List[str]
 
     @staticmethod
     def new(
         name: str,
-        arguments: Optional[List[Tuple[str, PythonTypeReference]]] = None,
-        return_type: Optional[PythonTypeReference] = None,
-        body: Optional[List[PythonStatement]] = None,
+        arguments: Optional[List[Tuple[str, Type]]] = None,
+        return_type: Optional[Type] = None,
+        body: Optional[List[Stmt]] = None,
         decorators: Optional[List[str]] = None,
-    ) -> "PythonMethod":
-        return PythonMethod(
+    ) -> "Method":
+        return Method(
             name=name,
             arguments=[] if arguments is None else arguments,
-            return_type=PythonTypeReference.new("None")
-            if return_type is None
-            else return_type,
-            body=[PythonCustomStatement("pass")] if body is None else body,
+            return_type=Type.new("None") if return_type is None else return_type,
+            body=[CustomStmt("pass")] if body is None else body,
             decorators=[] if decorators is None else decorators,
         )
 
-    def serialize_python_method_definition(self) -> str:
+    def serialize_method(self) -> str:
         formatted_arguments = ", ".join(
             ["self"]
             + [f"{arg_name}: {arg_type}" for arg_name, arg_type in self.arguments]
@@ -116,9 +105,7 @@ class PythonMethod(NamedTuple):
             output += f"@{decorator}\n"
         output += f"def {self.name}({formatted_arguments}) -> {self.return_type}:"
         for stmt in self.body:
-            output += "\n    " + stmt.serialize_python_statement().replace(
-                "\n", "\n    "
-            )
+            output += "\n    " + stmt.serialize_stmt().replace("\n", "\n    ")
         return output
 
     def modules(self) -> List[str]:
@@ -130,17 +117,14 @@ class PythonMethod(NamedTuple):
         return modules
 
 
-class PythonTypeClass(NamedTuple):
+class ClassDef(NamedTuple):
     name: str
     module: Optional[str]
-    required_properties: List[Tuple[str, PythonTypeReference]]
-    optional_properties: List[Tuple[str, PythonTypeReference]]
-    methods: List[PythonMethod]
+    required_properties: List[Tuple[str, Type]]
+    optional_properties: List[Tuple[str, Type]]
+    methods: List[Method]
 
-    def python_type_reference(self) -> PythonTypeReference:
-        return PythonTypeReference.new(self.name, self.module)
-
-    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
+    def serialize_type_def(self) -> Tuple[str, List[str]]:
         imports = ["typing"]
         output = f"class {self.name}(typing.NamedTuple):"
         for property_name, property_type in self.required_properties:
@@ -158,22 +142,17 @@ class PythonTypeClass(NamedTuple):
             )
             imports.extend(property_type.modules())
         for method in self.methods:
-            output += "\n    " + method.serialize_python_method_definition().replace(
-                "\n", "\n    "
-            )
+            output += "\n    " + method.serialize_method().replace("\n", "\n    ")
             imports.extend(method.modules())
         return output, imports
 
 
-class PythonTypeNewType(NamedTuple):
+class NewTypeDef(NamedTuple):
     name: str
-    parent_type: PythonTypeReference
+    parent_type: Type
     module: Optional[str] = None
 
-    def python_type_reference(self) -> PythonTypeReference:
-        return PythonTypeReference.new(self.name, self.module)
-
-    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
+    def serialize_type_def(self) -> Tuple[str, List[str]]:
         return (
             f"{self.name} = typing.NewType('" f"{self.name}', {self.parent_type})",
             ["typing"]
