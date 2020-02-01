@@ -182,9 +182,6 @@ class Expr(Protocol):
     def serialize_expr(self) -> str:
         ...
 
-    # def serialize_stmt(self) -> str:
-    #     return self.serialize_expr()
-
 
 class CallExpr(NamedTuple):
     fn: Expr
@@ -192,8 +189,8 @@ class CallExpr(NamedTuple):
 
     def serialize_expr(self) -> str:
         return "{}({})".format(
-            ", ".join([arg.serialize_expr() for arg in self.args]),
             self.fn.serialize_expr(),
+            ", ".join([arg.serialize_expr() for arg in self.args]),
         )
 
 
@@ -270,6 +267,15 @@ class AssignStmt(NamedTuple):
         return f"{self.left.serialize_expr()} = {self.right.serialize_expr()}"
 
 
+class IfExpr(NamedTuple):
+    true_value: Expr
+    condition: Expr
+    false_value: Expr
+
+    def serialize_expr(self) -> str:
+        return f"{self.true_value.serialize_expr()} if {self.condition.serialize_expr()} else {self.false_value.serialize_expr()}"
+
+
 class CustomExpr(NamedTuple):
     contents: str
 
@@ -308,7 +314,7 @@ class ElifStmt(NamedTuple):
     def serialize_stmt(self) -> str:
         return (
             f"{self.if_stmt.serialize_stmt()}\n"
-            + f"elif {self.elif_condition.serialize_expr}:"
+            + f"elif {self.elif_condition.serialize_expr()}:"
             + self.elif_body.serialize().replace("\n", "\n    ")
         )
 
@@ -322,3 +328,28 @@ class ElseStmt(NamedTuple):
             "\n", "\n    "
         )
 
+
+class ListComprehension(NamedTuple):
+    expr: Expr
+    forexpr: Expr
+    inexpr: Expr
+
+    def serialize_expr(self) -> str:
+        return f"[{self.expr.serialize_expr()} for {self.forexpr.serialize_expr()} in {self.inexpr.serialize_expr()}]"
+
+
+class MultiExpr(NamedTuple):
+    exprs: List[Expr]
+
+    def serialize_expr(self) -> str:
+        return ", ".join([expr.serialize_expr() for expr in self.exprs])
+
+
+class DictComprehension(NamedTuple):
+    keyexpr: Expr
+    valexpr: Expr
+    forexpr: Expr
+    inexpr: Expr
+
+    def serialize_expr(self) -> str:
+        return f"{{{self.keyexpr.serialize_expr()}: {self.valexpr.serialize_expr()} for {self.forexpr.serialize_expr()} in {self.inexpr.serialize_expr()}}}"

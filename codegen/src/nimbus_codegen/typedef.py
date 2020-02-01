@@ -63,9 +63,9 @@ TYPE_PARAMETER_LOGICAL_ID = py.Type(
 
 
 def _properties_dict(
-    module: str,
-    resource_logical_id_variable: str,
-    parameter_logical_id_variable: str,
+    module: py.Variable,
+    resource_logical_id_variable: py.Variable,
+    parameter_logical_id_variable: py.Variable,
     properties: Dict[str, PropertyTypeReference],
 ) -> py.Block:
     output = py.Block(
@@ -75,21 +75,22 @@ def _properties_dict(
             )
         ]
     )
+    output_variable = py.Variable("output")
     for property_name, typeref in properties.items():
         if property_name in py.KEYWORDS:
             property_name += "_"
         refexpr = reference_expression(
-            module,
-            f"self.{property_name}",
-            resource_logical_id_variable,
-            parameter_logical_id_variable,
-            typeref,
+            module=module,
+            property_variable=py.Variable(
+                py.Attr(parent=py.Variable("self"), label=property_name)
+            ),
+            resource_logical_id_variable=resource_logical_id_variable,
+            parameter_logical_id_variable=parameter_logical_id_variable,
+            property_type_reference=typeref,
         )
         if not typeref.Required:
             output.stmts.append(
-                py.AssignStmt(
-                    left=py.Variable(property_name), right=py.CustomExpr(refexpr)
-                )
+                py.AssignStmt(left=py.Variable(property_name), right=refexpr)
             )
             output.stmts.append(
                 py.IfStmt(
@@ -100,7 +101,7 @@ def _properties_dict(
                         [
                             py.AssignStmt(
                                 left=py.DictKeyAccess(
-                                    dict_=py.Variable("output"),
+                                    dict_=output_variable,
                                     key=py.StringLiteral(property_name),
                                 ),
                                 right=py.Variable(property_name),
@@ -113,23 +114,23 @@ def _properties_dict(
             output.stmts.append(
                 py.AssignStmt(
                     left=py.DictKeyAccess(
-                        dict_=py.Variable("output"), key=py.StringLiteral(property_name)
+                        dict_=output_variable, key=py.StringLiteral(property_name)
                     ),
-                    right=py.CustomExpr(refexpr),
+                    right=refexpr,
                 )
             )
     return output
 
 
 def _resource_to_cloudformation_method(
-    module: str, resource_id: str, spec: ResourceSpec
+    module: py.Variable, resource_id: str, spec: ResourceSpec
 ) -> py.Method:
     RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
     PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
     output = _properties_dict(
         module,
-        RESOURCE_LOGICAL_ID_VARIABLE,
-        PARAMETER_LOGICAL_ID_VARIABLE,
+        py.Variable(RESOURCE_LOGICAL_ID_VARIABLE),
+        py.Variable(PARAMETER_LOGICAL_ID_VARIABLE),
         spec.Properties,
     )
     output.stmts.append(
@@ -190,7 +191,11 @@ class _ToPythonType:
                 # if isinstance(attr_spec, PrimitiveScalarAttributeSpec)
                 # and attr_spec.PrimitiveType == PrimitiveType.String
             ]
-            + [_resource_to_cloudformation_method(module, resource_id, spec)],
+            + [
+                _resource_to_cloudformation_method(
+                    py.Variable(module), resource_id, spec
+                )
+            ],
         )
 
     @staticmethod
@@ -204,9 +209,9 @@ class _ToPythonType:
             RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
             PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
             output = _properties_dict(
-                module,
-                RESOURCE_LOGICAL_ID_VARIABLE,
-                PARAMETER_LOGICAL_ID_VARIABLE,
+                py.Variable(module),
+                py.Variable(RESOURCE_LOGICAL_ID_VARIABLE),
+                py.Variable(PARAMETER_LOGICAL_ID_VARIABLE),
                 definition.Properties,
             )
             output.stmts.append(py.ReturnStmt(py.Variable("output")))
