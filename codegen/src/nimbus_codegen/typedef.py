@@ -67,8 +67,14 @@ def _properties_dict(
     resource_logical_id_variable: str,
     parameter_logical_id_variable: str,
     properties: Dict[str, PropertyTypeReference],
-) -> str:
-    output = f"output: {TYPE_JSON} = {{}}"
+) -> py.Block:
+    output = py.Block(
+        [
+            py.DeclareAssignStmt(
+                label="output", type_=TYPE_JSON, value=py.DictLiteral([])
+            )
+        ]
+    )
     for property_name, typeref in properties.items():
         if property_name in py.KEYWORDS:
             property_name += "_"
@@ -80,11 +86,38 @@ def _properties_dict(
             typeref,
         )
         if not typeref.Required:
-            output += f"\n{property_name} = {refexpr}"
-            output += f"\nif {property_name} is not None:"
-            output += f"\n     output['{property_name}'] = {property_name}"
+            output.stmts.append(
+                py.AssignStmt(
+                    left=py.Variable(property_name), right=py.CustomExpr(refexpr)
+                )
+            )
+            output.stmts.append(
+                py.IfStmt(
+                    condition=py.IsNotExpr(
+                        left=py.Variable(property_name), right=py.NoneLiteral()
+                    ),
+                    body=py.Block(
+                        [
+                            py.AssignStmt(
+                                left=py.DictKeyAccess(
+                                    dict_=py.Variable("output"),
+                                    key=py.StringLiteral(property_name),
+                                ),
+                                right=py.Variable(property_name),
+                            )
+                        ]
+                    ),
+                )
+            )
         else:
-            output += f"\noutput['{property_name}'] = {refexpr}"
+            output.stmts.append(
+                py.AssignStmt(
+                    left=py.DictKeyAccess(
+                        dict_=py.Variable("output"), key=py.StringLiteral(property_name)
+                    ),
+                    right=py.CustomExpr(refexpr),
+                )
+            )
     return output
 
 
@@ -99,7 +132,16 @@ def _resource_to_cloudformation_method(
         PARAMETER_LOGICAL_ID_VARIABLE,
         spec.Properties,
     )
-    output += f"\nreturn {{'Type': '{resource_id}', 'Properties': output}}"
+    output.stmts.append(
+        py.ReturnStmt(
+            py.DictLiteral(
+                [
+                    (py.StringLiteral("Type"), py.StringLiteral(resource_id)),
+                    (py.StringLiteral("Properties"), py.Variable("output")),
+                ]
+            )
+        )
+    )
     return py.Method.new(
         name="resource_to_cloudformation",
         arguments=[
@@ -107,7 +149,7 @@ def _resource_to_cloudformation_method(
             (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_PARAMETER_LOGICAL_ID),
         ],
         return_type=TYPE_JSON,
-        body=[py.CustomStmt(content=output)],
+        body=output,
     )
 
 
@@ -135,11 +177,13 @@ class _ToPythonType:
                     return_type=py.Type.new(
                         name="AttributeString", module="nimbus_core"
                     ),
-                    body=[
-                        py.CustomStmt(
-                            content=f"return nimbus_core.AttributeString(resource=self, attribute_name='{attr_name}')"
-                        )
-                    ],
+                    body=py.Block(
+                        [
+                            py.CustomStmt(
+                                content=f"return nimbus_core.AttributeString(resource=self, attribute_name='{attr_name}')"
+                            )
+                        ]
+                    ),
                 )
                 for attr_name, attr_spec in spec.Attributes.items()
                 # TODO: Support other attribute types in addition to strings
@@ -165,7 +209,7 @@ class _ToPythonType:
                 PARAMETER_LOGICAL_ID_VARIABLE,
                 definition.Properties,
             )
-            output += "\nreturn output"
+            output.stmts.append(py.ReturnStmt(py.Variable("output")))
             return py.ClassDef(
                 name=name,
                 module=module,
@@ -179,7 +223,7 @@ class _ToPythonType:
                             (PARAMETER_LOGICAL_ID_VARIABLE, TYPE_PARAMETER_LOGICAL_ID,),
                         ],
                         return_type=TYPE_JSON,
-                        body=[py.CustomStmt(content=output)],
+                        body=output,
                     ),
                 ],
             )
