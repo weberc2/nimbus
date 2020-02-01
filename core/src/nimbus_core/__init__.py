@@ -187,9 +187,7 @@ class IntrinsicFunction(Protocol):
         ...
 
 
-Substitutable = Union[
-    Resource, "PropertyString", Attribute, Parameter
-]
+Substitutable = Union[Resource, "PropertyString", Attribute, Parameter]
 
 
 def substitutable_to_cloudformation(
@@ -200,7 +198,9 @@ def substitutable_to_cloudformation(
     if isinstance(substitutable, Resource):
         return _ref(resource_logical_id(substitutable))
     if isinstance(substitutable, PROPERTY_STRING_TYPES):
-        return property_string_reference(substitutable)
+        return property_string_reference(
+            substitutable, resource_logical_id, parameter_logical_id
+        )
     if isinstance(substitutable, Attribute):
         return substitutable.attribute_to_cloudformation(resource_logical_id)
     if isinstance(substitutable, PARAMETER_TYPES):
@@ -254,7 +254,8 @@ def property_string_reference(
         )
     if isinstance(property_string, Resource):
         return _ref(resource_logical_id(property_string))
-    # TODO: handle AttributeString
+    if isinstance(property_string, AttributeString):
+        return property_string.attribute_to_cloudformation(resource_logical_id)
     raise TypeError(
         f"Invalid PropertyString: {property_string} ({type(property_string)})"
     )

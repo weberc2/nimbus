@@ -65,20 +65,20 @@ class PythonType(Protocol):
     def python_type_reference(self) -> PythonTypeReference:
         ...
 
-    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
+    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
         ...
 
 
 class PythonStatement(Protocol):
-    def serialize_python_statement(self, indent: str) -> str:
+    def serialize_python_statement(self) -> str:
         ...
 
 
 class PythonCustomStatement(NamedTuple):
     content: str
 
-    def serialize_python_statement(self, indent: str) -> str:
-        return indent + self.content.replace("\n", f"\n{indent}")
+    def serialize_python_statement(self) -> str:
+        return self.content
 
 
 class PythonMethod(NamedTuple):
@@ -106,19 +106,19 @@ class PythonMethod(NamedTuple):
             decorators=[] if decorators is None else decorators,
         )
 
-    def serialize_python_method_definition(self, indent: str) -> str:
+    def serialize_python_method_definition(self) -> str:
         formatted_arguments = ", ".join(
             ["self"]
             + [f"{arg_name}: {arg_type}" for arg_name, arg_type in self.arguments]
         )
         output = ""
         for decorator in self.decorators:
-            output += f"{indent}@{decorator}\n"
-        output += (
-            f"{indent}def {self.name}({formatted_arguments}) -> {self.return_type}:"
-        )
+            output += f"@{decorator}\n"
+        output += f"def {self.name}({formatted_arguments}) -> {self.return_type}:"
         for stmt in self.body:
-            output += f"\n{stmt.serialize_python_statement(indent+'    ')}"
+            output += "\n    " + stmt.serialize_python_statement().replace(
+                "\n", "\n    "
+            )
         return output
 
     def modules(self) -> List[str]:
@@ -140,23 +140,27 @@ class PythonTypeClass(NamedTuple):
     def python_type_reference(self) -> PythonTypeReference:
         return PythonTypeReference.new(self.name, self.module)
 
-    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
+    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
         imports = ["typing"]
-        output = f"{indent}class {self.name}(typing.NamedTuple):"
+        output = f"class {self.name}(typing.NamedTuple):"
         for property_name, property_type in self.required_properties:
             property_name = (
                 property_name if property_name not in KEYWORDS else f"{property_name}_"
             )
-            output += f"\n{indent}    {property_name}: '{property_type}'"
+            output += f"\n    {property_name}: '{property_type}'"
             imports.extend(property_type.modules())
         for property_name, property_type in self.optional_properties:
             property_name = (
                 property_name if property_name not in KEYWORDS else f"{property_name}_"
             )
-            output += f"\n{indent}    {property_name}: typing.Optional['{property_type}'] = None"
+            output += (
+                f"\n    {property_name}: typing.Optional['{property_type}'] = None"
+            )
             imports.extend(property_type.modules())
         for method in self.methods:
-            output += f"\n{method.serialize_python_method_definition(indent+'    ')}"
+            output += "\n    " + method.serialize_python_method_definition().replace(
+                "\n", "\n    "
+            )
             imports.extend(method.modules())
         return output, imports
 
@@ -169,10 +173,9 @@ class PythonTypeNewType(NamedTuple):
     def python_type_reference(self) -> PythonTypeReference:
         return PythonTypeReference.new(self.name, self.module)
 
-    def serialize_python_type_definition(self, indent: str) -> Tuple[str, List[str]]:
+    def serialize_python_type_definition(self) -> Tuple[str, List[str]]:
         return (
-            f"{indent}{self.name} = typing.NewType('"
-            f"{self.name}', {self.parent_type})",
+            f"{self.name} = typing.NewType('" f"{self.name}', {self.parent_type})",
             ["typing"]
             if self.parent_type.module is None
             else ["typing", self.parent_type.module],

@@ -65,6 +65,14 @@ def _non_primitive_property_type_reference_expression(
 ) -> str:
     if str(property_type) == "Tag":
         module = "nimbus_core"
+
+    # TODO: Most of the time property_type refers to a
+    # CompoundPropertyTypeDefinition in which case this is correct; however,
+    # sometimes it refers to a NewType in which case it doesn't have a .reference()
+    # method (at least it doesn't in cases where the NewType target type is a
+    # List[T] or otherwise lacks a .reference() method). Further, in other cases,
+    # property_type might be optional in which case the value behind
+    # `property_variable` could be `None`, in which case this code produces a bug.
     return (
         f"{module}.{property_type}.reference({property_variable}, "
         f"{resource_logical_id_variable}, {parameter_logical_id_variable})"

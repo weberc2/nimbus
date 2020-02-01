@@ -25,7 +25,7 @@ def render_module(module: str, typedefs: List[PythonType]) -> str:
     import_output = f"from . import {module}"
     imports = {module}
     for typedef in typedefs:
-        typedefstr, typedefimports = typedef.serialize_python_type_definition(indent="")
+        typedefstr, typedefimports = typedef.serialize_python_type_definition()
         typedef_output += f"\n\n{typedefstr}"
         for import_ in typedefimports:
             if import_ not in imports:
