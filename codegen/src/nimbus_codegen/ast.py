@@ -50,8 +50,8 @@ class Type(NamedTuple):
             return f"{self.module}.{base}"
         return base
 
-    def __str__(self) -> str:
-        raise Exception("ERROR")
+    def serialize_expr(self) -> str:
+        return self.serialize_type()
 
     def modules(self) -> List[str]:
         modules = [] if self.module is None else [self.module]
@@ -78,7 +78,7 @@ class Block(NamedTuple):
             return "    pass"
         output = ""
         for stmt in self.stmts:
-            output += "\n    " + stmt.serialize_stmt()
+            output += "\n    " + stmt.serialize_stmt().replace("\n", "\n    ")
         return output
 
 
@@ -117,7 +117,7 @@ class Method(NamedTuple):
         for decorator in self.decorators:
             output += f"@{decorator}\n"
         output += f"def {self.name}({formatted_arguments}) -> {self.return_type.serialize_type()}:"
-        return output + self.body.serialize().replace("\n", "\n    ")
+        return output + self.body.serialize()
 
     def modules(self) -> List[str]:
         # TODO: this doesn't account for modules depended upon by the body
@@ -277,9 +277,16 @@ class IsNotExpr(NamedTuple):
         return f"{self.left.serialize_expr()} is not {self.right.serialize_expr()}"
 
 
-class NoneLiteral(NamedTuple):
+class KeywordLiteral(NamedTuple):
+    keyword: str
+
     def serialize_expr(self) -> str:
-        return "None"
+        return self.keyword
+
+
+NoneLiteral = KeywordLiteral("None")
+TrueLiteral = KeywordLiteral("True")
+FalseLiteral = KeywordLiteral("False")
 
 
 class IfStmt(NamedTuple):
@@ -287,9 +294,7 @@ class IfStmt(NamedTuple):
     body: Block
 
     def serialize_stmt(self) -> str:
-        return f"if {self.condition.serialize_expr()}:" + self.body.serialize().replace(
-            "\n", "\n    "
-        )
+        return f"if {self.condition.serialize_expr()}:" + self.body.serialize()
 
 
 class ElifStmt(NamedTuple):

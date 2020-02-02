@@ -1,8 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 
 import nimbus_codegen.ast as py
 
 from .spec import (
+    CompoundPropertyTypeDefinition,
     NonPrimitiveListPropertyTypeReference,
     NonPrimitiveMapPropertyTypeReference,
     NonPrimitivePropertyType,
@@ -12,6 +13,7 @@ from .spec import (
     PrimitiveScalarPropertyTypeReference,
     PrimitiveType,
     PropertyTypeReference,
+    PropertyTypeDefinition,
 )
 
 
@@ -21,7 +23,6 @@ def _primitive_type_reference_expression(
     parameter_logical_id_variable: py.Variable,
     primitive_type: PrimitiveType,
 ) -> py.CallExpr:
-    args: Tuple[str, List[py.Expr]]
     typestr: str
     args: List[py.Expr] = [property_variable, parameter_logical_id_variable]
     if primitive_type == PrimitiveType.Boolean:
@@ -65,22 +66,52 @@ def _non_primitive_property_type_reference_expression(
     property_variable: py.Variable,
     resource_logical_id_variable: py.Variable,
     parameter_logical_id_variable: py.Variable,
+    property_types: Dict[
+        NonPrimitivePropertyType, Tuple[Optional[py.Variable], PropertyTypeDefinition]
+    ],
     property_type: NonPrimitivePropertyType,
+    required: bool,
 ) -> py.Expr:
-    if str(property_type) == "Tag":
-        module = py.Variable("nimbus_core")
+    def type_expr(
+        module: py.Variable, property_type: NonPrimitivePropertyType, required: bool
+    ) -> py.Expr:
+        property_type_module, property_type_definition = property_types[property_type]
+        if property_type_module is not None:
+            module = property_type_module
+        if isinstance(property_type_definition, CompoundPropertyTypeDefinition):
+            return py.Attr(
+                parent=py.Attr(parent=module, label=str(property_type)),
+                label="reference",
+            )
+        elif isinstance(
+            property_type_definition, NonPrimitiveListPropertyTypeReference
+        ):
+            base_expr = type_expr(
+                module,
+                property_type_definition.ItemType,
+                property_type_definition.Required,
+            )
+        elif isinstance(property_type_definition, PrimitiveScalarPropertyTypeReference):
+            base_expr = _primitive_type_reference_expression(
+                property_variable,
+                resource_logical_id_variable,
+                parameter_logical_id_variable,
+                property_type_definition.PrimitiveType,
+            )
+        else:
+            raise TypeError(
+                f"Invalid PropertyTypeDefinition: {module.label}.{property_type} ({property_type_definition})"
+            )
+        if not required:
+            base_expr = py.IfExpr(
+                true_value=base_expr,
+                condition=py.IsNotExpr(left=base_expr, right=py.NoneLiteral),
+                false_value=py.NoneLiteral,
+            )
+        return base_expr
 
-    # TODO: Most of the time property_type refers to a
-    # CompoundPropertyTypeDefinition in which case this is correct; however,
-    # sometimes it refers to a NewType in which case it doesn't have a .reference()
-    # method (at least it doesn't in cases where the NewType target type is a
-    # List[T] or otherwise lacks a .reference() method). Further, in other cases,
-    # property_type might be optional in which case the value behind
-    # `property_variable` could be `None`, in which case this code produces a bug.
     return py.CallExpr(
-        fn=py.Attr(
-            parent=py.Attr(parent=module, label=str(property_type)), label="reference"
-        ),
+        fn=type_expr(module, property_type, required),
         args=[
             property_variable,
             resource_logical_id_variable,
@@ -94,6 +125,9 @@ def reference_expression(
     property_variable: py.Variable,
     resource_logical_id_variable: py.Variable,
     parameter_logical_id_variable: py.Variable,
+    property_types: Dict[
+        NonPrimitivePropertyType, Tuple[Optional[py.Variable], PropertyTypeDefinition]
+    ],
     property_type_reference: PropertyTypeReference,
 ) -> py.Expr:
     base_expr: py.Expr
@@ -110,7 +144,9 @@ def reference_expression(
             property_variable,
             resource_logical_id_variable,
             parameter_logical_id_variable,
+            property_types,
             property_type_reference.Type,
+            property_type_reference.Required,
         )
     elif isinstance(property_type_reference, PrimitiveListPropertyTypeReference):
         forexpr = py.Variable("x")
@@ -132,7 +168,9 @@ def reference_expression(
                 forexpr,
                 resource_logical_id_variable,
                 parameter_logical_id_variable,
+                property_types,
                 property_type_reference.ItemType,
+                property_type_reference.Required,
             ),
             forexpr=forexpr,
             inexpr=property_variable,
@@ -163,7 +201,9 @@ def reference_expression(
                 valexpr,
                 resource_logical_id_variable,
                 parameter_logical_id_variable,
+                property_types,
                 property_type_reference.ItemType,
+                property_type_reference.Required,
             ),
             forexpr=py.MultiExpr([keyexpr, valexpr]),
             inexpr=py.CallExpr(
@@ -180,6 +220,6 @@ def reference_expression(
         return base_expr
     return py.IfExpr(
         true_value=base_expr,
-        condition=py.IsNotExpr(left=property_variable, right=py.NoneLiteral()),
-        false_value=py.NoneLiteral(),
+        condition=py.IsNotExpr(left=property_variable, right=py.NoneLiteral),
+        false_value=py.NoneLiteral,
     )

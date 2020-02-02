@@ -1,13 +1,15 @@
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Optional
 
 import nimbus_codegen.ast as py
+
 from .refexpr import reference_expression
 from .spec import (
-    PrimitiveScalarAttributeSpec,
-    PrimitiveType,
     CompoundPropertyTypeDefinition,
     NonPrimitiveListPropertyTypeReference,
+    NonPrimitivePropertyType,
+    PrimitiveScalarAttributeSpec,
     PrimitiveScalarPropertyTypeReference,
+    PrimitiveType,
     PropertyTypeDefinition,
     PropertyTypeReference,
     ResourceSpec,
@@ -66,6 +68,9 @@ def _properties_dict(
     module: py.Variable,
     resource_logical_id_variable: py.Variable,
     parameter_logical_id_variable: py.Variable,
+    property_types: Dict[
+        NonPrimitivePropertyType, Tuple[Optional[py.Variable], PropertyTypeDefinition]
+    ],
     properties: Dict[str, PropertyTypeReference],
 ) -> py.Block:
     output = py.Block(
@@ -86,6 +91,7 @@ def _properties_dict(
             ),
             resource_logical_id_variable=resource_logical_id_variable,
             parameter_logical_id_variable=parameter_logical_id_variable,
+            property_types=property_types,
             property_type_reference=typeref,
         )
         if not typeref.Required:
@@ -95,7 +101,7 @@ def _properties_dict(
             output.stmts.append(
                 py.IfStmt(
                     condition=py.IsNotExpr(
-                        left=py.Variable(property_name), right=py.NoneLiteral()
+                        left=py.Variable(property_name), right=py.NoneLiteral
                     ),
                     body=py.Block(
                         [
@@ -105,7 +111,7 @@ def _properties_dict(
                                     key=py.StringLiteral(property_name),
                                 ),
                                 right=py.Variable(property_name),
-                            )
+                            ),
                         ]
                     ),
                 )
@@ -123,7 +129,12 @@ def _properties_dict(
 
 
 def _resource_to_cloudformation_method(
-    module: py.Variable, resource_id: str, spec: ResourceSpec
+    module: py.Variable,
+    resource_id: str,
+    property_types: Dict[
+        NonPrimitivePropertyType, Tuple[Optional[py.Variable], PropertyTypeDefinition]
+    ],
+    spec: ResourceSpec,
 ) -> py.Method:
     RESOURCE_LOGICAL_ID_VARIABLE = "resource_logical_id"
     PARAMETER_LOGICAL_ID_VARIABLE = "parameter_logical_id"
@@ -131,6 +142,7 @@ def _resource_to_cloudformation_method(
         module,
         py.Variable(RESOURCE_LOGICAL_ID_VARIABLE),
         py.Variable(PARAMETER_LOGICAL_ID_VARIABLE),
+        property_types,
         spec.Properties,
     )
     output.stmts.append(
@@ -157,7 +169,13 @@ def _resource_to_cloudformation_method(
 class _ToPythonType:
     @staticmethod
     def from_resource_spec(
-        module: str, resource_id: str, spec: ResourceSpec
+        module: str,
+        resource_id: str,
+        property_types: Dict[
+            NonPrimitivePropertyType,
+            Tuple[Optional[py.Variable], PropertyTypeDefinition],
+        ],
+        spec: ResourceSpec,
     ) -> py.ClassDef:
         idx = resource_id.rfind("::")
         required_props, optional_props = _property_type_refs(module, spec.Properties)
@@ -202,14 +220,20 @@ class _ToPythonType:
             ]
             + [
                 _resource_to_cloudformation_method(
-                    py.Variable(module), resource_id, spec
+                    py.Variable(module), resource_id, property_types, spec
                 )
             ],
         )
 
     @staticmethod
     def from_property_type(
-        module: str, name: str, definition: PropertyTypeDefinition
+        module: str,
+        name: str,
+        property_types: Dict[
+            NonPrimitivePropertyType,
+            Tuple[Optional[py.Variable], PropertyTypeDefinition],
+        ],
+        definition: PropertyTypeDefinition,
     ) -> py.TypeDef:
         if isinstance(definition, CompoundPropertyTypeDefinition):
             required_props, optional_props = _property_type_refs(
@@ -221,6 +245,7 @@ class _ToPythonType:
                 py.Variable(module),
                 py.Variable(RESOURCE_LOGICAL_ID_VARIABLE),
                 py.Variable(PARAMETER_LOGICAL_ID_VARIABLE),
+                property_types,
                 definition.Properties,
             )
             output.stmts.append(py.ReturnStmt(py.Variable("output")))
@@ -266,12 +291,24 @@ def resource_namespace(
     # Build type definitions for all property types in the resource's namespace
     # as well as the type definition for the resource itself.
     prefix = f"{resource_id}."
+    properties: Dict[
+        NonPrimitivePropertyType, Tuple[Optional[py.Variable], PropertyTypeDefinition]
+    ] = {
+        NonPrimitivePropertyType(name[len(prefix) :]): (None, typedef)
+        for name, typedef in spec.PropertyTypes.items()
+        if name.startswith(prefix)
+    }
+    properties[NonPrimitivePropertyType("Tag")] = (
+        py.Variable("nimbus_core"),
+        spec.PropertyTypes[NonPrimitivePropertyType("Tag")],
+    )
+
     return [
-        _ToPythonType.from_property_type(module, name[len(prefix) :], defn)
+        _ToPythonType.from_property_type(module, name[len(prefix) :], properties, defn)
         for name, defn in spec.PropertyTypes.items()
         if name.startswith(prefix)
     ] + [
         _ToPythonType.from_resource_spec(
-            module, resource_id, spec.ResourceTypes[resource_id]
+            module, resource_id, properties, spec.ResourceTypes[resource_id]
         )
     ]
