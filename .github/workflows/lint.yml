@@ -9,7 +9,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-
     - name: Python Code Quality and Lint
       uses: ricardochaves/python-lint@v1.1.0
       with:
@@ -18,13 +17,13 @@ jobs:
         # Use Pylint
         use-pylint: false
         # Use pycodestyle
-        use-pycodestyle: # optional, default is true
+        use-pycodestyle: true # optional, default is true
         # Use Flake8
-        use-flake8: # optional, default is true
+        use-flake8: true # optional, default is true
         # Use Black
-        use-black: # optional, default is true
+        use-black: true # optional, default is true
         # Use mypy
-        use-mypy: # optional, default is true
+        use-mypy: true # optional, default is true
         # Use isort
         use-isort: # optional, default is true
         # Extra options: pylint $(extra-pylint-options) $(python-root-list)
