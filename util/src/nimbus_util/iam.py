@@ -40,12 +40,17 @@ class ConditionMap(
     pass
 
 
+class Principal(TypedDict):
+    Service: Union[str, List[str]]
+
+
 class Statement(TypedDict):
-    Sid: str
+    Sid: Optional[str]
     Action: Union[str, List[str]]
     Effect: Literal["Allow", "Deny"]
     Resource: PropertyString
     Condition: Optional[ConditionMap]
+    Principal: Optional[Principal]
 
 
 class PolicyDocument(TypedDict):
