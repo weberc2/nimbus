@@ -18,13 +18,13 @@ class Template(NamedTuple):
     resources: Dict[str, Resource]
 
     def resource_logical_id(self, r: Resource) -> str:
-        for lid, resource in self.resources:
+        for lid, resource in self.resources.items():
             if resource == r:
                 return lid
         raise UnknownResource(r)
 
     def parameter_logical_id(self, p: Parameter) -> str:
-        for lid, parameter in self.parameters:
+        for lid, parameter in self.parameters.items():
             if parameter == p:
                 return lid
         raise UnknownParameter(p)
@@ -39,7 +39,7 @@ class Template(NamedTuple):
             },
             "Resources": {
                 logical_id: resource.resource_to_cloudformation(
-                    resource_logical_id=lambda resource: self.parameter_logical_id,
+                    resource_logical_id=self.resource_logical_id,
                     parameter_logical_id=self.parameter_logical_id,
                 )
                 for logical_id, resource in self.resources.items()
