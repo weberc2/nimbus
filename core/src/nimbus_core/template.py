@@ -45,3 +45,6 @@ class Template(NamedTuple):
                 for logical_id, resource in self.resources.items()
             },
         }
+
+    def cloudformation(self) -> Dict[str, Any]:
+        return self.template_to_cloudformation()

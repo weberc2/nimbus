@@ -8,4 +8,5 @@ setuptools.setup(
     package_dir={"": "src"},
     packages=setuptools.find_packages("src"),
     provides=setuptools.find_packages("src"),
+    entrypoints={"console_scripts": ["nimbus_codegen = nimbus_codegen.__main__:main"],},
 )
