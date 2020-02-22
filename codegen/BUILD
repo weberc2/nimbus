@@ -2,6 +2,7 @@ load("std/python", "py_source_library", "py_source_binary", "pypi")
 
 black = pypi(
     name = "black",
+    constraint = "==19.10b0",
     dependencies = [
         pypi(name = "appdirs", constraint = "==1.4.3"), # black: Any
         pypi(name = "attrs", constraint = "==19.3.0"), # black: >=18.1.0
