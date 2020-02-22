@@ -18,7 +18,10 @@ lib = py_source_library(
     name = "lib",
     package_name = "nimbus-codegen",
     sources = glob("setup.py", "src/nimbus_codegen/**.py"),
-    dependencies = [ black, pypi(name = "typing-extensions") ],
+    dependencies = [
+        black,
+        pypi(name = "typing-extensions", constraint = "==3.7.4.1")
+    ],
 )
 
 bin = py_source_binary(
