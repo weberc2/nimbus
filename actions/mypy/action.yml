@@ -1,6 +1,0 @@
-name: Mypy
-description: Type checking
-runs:
-  using: docker
-  image: Dockerfile
-  entrypoint: mypy -p nimbus_core -p nimbus_codegen -p nimbus_util

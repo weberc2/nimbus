@@ -6,4 +6,3 @@ def key_id_to_key_arn(key_id: PropertyString) -> PropertyString:
         f"arn:aws:kms:${{AWS::Region}}:${{AWS::AccountId}}:key/${{KeyID}}",
         KeyID=key_id,
     )
-

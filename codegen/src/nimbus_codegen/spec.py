@@ -308,7 +308,9 @@ class ResourceSpec(NamedTuple):
 
 
 PropertyTypeDefinition = Union[
-    CompoundPropertyTypeDefinition, PrimitiveScalarPropertyTypeReference, NonPrimitiveListPropertyTypeReference
+    CompoundPropertyTypeDefinition,
+    PrimitiveScalarPropertyTypeReference,
+    NonPrimitiveListPropertyTypeReference,
 ]
 
 
